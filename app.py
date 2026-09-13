@@ -3,12 +3,12 @@ import pandas as pd
 import datetime
 
 st.set_page_config(
-    page_title="TempoLabDemifond - Profils Énergétiques",
+    page_title="TempoLabDemifond - RFID & Analyse",
     page_icon="⏱️",
     layout="wide"
 )
 
-# --- DESIGN HAUT CONTRASTE ---
+# --- DESIGN HAUT CONTRASTE (Optimisé plein soleil) ---
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: #ffffff; }
@@ -30,7 +30,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- INITIALISATION DES DONNÉES (MODE HYBRIDE) ---
+# --- INITIALISATION DE LA CONNEXION ET DES DONNÉES (MODE HYBRIDE) ---
 conn = None
 use_gsheets = False
 
@@ -39,189 +39,304 @@ try:
     df_eleves = conn.read(worksheet="eleves", ttl=0)
     use_gsheets = True
     try:
-        df_passages = conn.read(worksheet="passages_demifond", ttl=0)
+        df_passages = conn.read(worksheet="passages_rfid", ttl=0)
     except Exception:
-        df_passages = pd.DataFrame(columns=["Classe", "Dossard", "Nom", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"])
+        df_passages = pd.DataFrame(columns=["Classe", "Seance", "Dossard", "Nom", "Scenario", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Niveau"])
 except Exception:
+    # Données de secours locales multi-classes si Google Sheets n'est pas branché
     if "eleves" not in st.session_state:
-        st.session_state.eleves = pd.DataFrame({
-            "Classe": ["5ème 5"] * 5,
-            "Dossard": [501, 502, 503, 504, 505],
-            "Nom": ["Blanc Nathan", "Bonnet Chloé", "Brunet Lucas", "Chevalier Manon", "Clement Hugo"],
-            "VMA": [13.5, 11.5, 14.8, 12.0, 13.0],
-            "Objectif_pct": [80, 75, 85, 80, 80]
-        })
+        classes_ref = ["6e4", "5e5", "5e7", "4e5", "3e5", "3eA"]
+        noms_test = ["Arnaud Lucas", "Bernard Emma", "Bouvier Nathan", "Carre Manon", "David Hugo"]
+        data_secours = []
+        for cl in classes_ref:
+            for idx, nom in enumerate(noms_test):
+                data_secours.append({
+                    "Classe": cl,
+                    "Dossard": int(cl[0]) * 100 + idx + 1,
+                    "Nom": f"{nom} ({cl})",
+                    "VMA": 12.0 + idx * 0.6,
+                    "Objectif_pct": 80
+                })
+        st.session_state.eleves = pd.DataFrame(data_secours)
     df_eleves = st.session_state.eleves
 
     if "passages_local" not in st.session_state:
-        st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Nom", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"])
+        st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Seance", "Dossard", "Nom", "Scenario", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Niveau"])
     df_passages = st.session_state.passages_local
 
-# --- BARRE LATÉRALE ---
-st.sidebar.title("🧭 TempoLab - Demi-fond")
-list_classes = sorted(df_eleves["Classe"].unique().tolist()) if "Classe" in df_eleves.columns else ["5ème 5"]
+# --- MENU LATÉRAL : TOUR DE CONTRÔLE ---
+st.sidebar.title("🧭 TempoLab - RFID & Allures")
+
+# Vos 6 classes de référence
+list_classes = ["6e4", "5e5", "5e7", "4e5", "3e5", "3eA"]
+if "Classe" in df_eleves.columns:
+    classes_dispo = sorted(df_eleves["Classe"].unique().tolist())
+    # S'assurer que les 6 classes sont bien présentes ou sélectionnables
+    list_classes = list(set(list_classes + classes_dispo))
+
 classe_active = st.sidebar.selectbox("📂 Choisir la classe :", list_classes)
+
+st.sidebar.markdown("---")
+mode_navigation = st.sidebar.radio("Mode d'affichage :", [
+    "📊 Tableau de Bord & Flux RFID",
+    "🏃 Fiche Élève & Analyse Graphique",
+    "🔒 Espace Professeur (Admin / Import)"
+])
 
 df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" in df_eleves.columns else df_eleves
 
-st.sidebar.markdown("---")
-st.sidebar.info("🎯 **Analyse de course :** Choix des scénarios, registres physiologiques et suivi des écarts en temps réel.")
+# Fonction utilitaire pour attribuer le niveau à 4 niveaux selon l'écart absolu en mètres
+def evaluer_niveau(ecart):
+    abs_e = abs(ecart)
+    if abs_e <= 25:
+        return "🟢 Acquis"
+    elif abs_e <= 60:
+        return "🟠 En cours d'acquisition"
+    elif ecart > 60:
+        return "🌟 Dépassé"
+    else:
+        return "🔴 Non acquis"
 
-st.title(f"🏃 Gestion d'Allure & Profils Énergétiques - Classe : {classe_active}")
+# =========================================================================
+# 1. TABLEAU DE BORD & FLUX RFID (VUE GLOBALE CLASSE)
+# =========================================================================
+if mode_navigation == "📊 Tableau de Bord & Flux RFID":
+    st.title(f"📊 Tableau de Bord - Classe : {classe_active}")
+    st.info("Visualisez ici le récapitulatif global de la classe et filtrez par séance pour analyser les retours des balises et puces RFID.")
 
-if not df_eleves_classe.empty:
-    # 1. Choix de la combinaison stratégique de l'élève
-    combinaison_choisie = st.selectbox(
-        "🧩 Choisir la combinaison / scénario de course de l'élève :",
-        [
-            "Option 1 : 3/6/3 + 9 + 3 (Total 24 min)",
-            "Option 2 : 3/6/3 + 12 (Total 24 min)",
-            "Option 3 : 6/3 + 9 + 1.3 + 1.3 (Total ~21.6 min)",
-            "Option 4 : 9 + 6 + 3 (Total 18 min)"
-        ]
-    )
+    # --- FILTRE DE SÉANCE ---
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        # Récupération des séances existantes pour cette classe
+        try:
+            df_src = conn.read(worksheet="passages_rfid", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
+        except Exception:
+            df_src = st.session_state.get("passages_local", pd.DataFrame())
 
-    # --- ENCADRÉ PÉDAGOGIQUE DU PROFIL ÉNERGÉTIQUE ---
-    if "Option 1" in combinaison_choisie:
-        duree_totale_min = 24
-        st.info(
-            "🧠 **Profil Physiologique : Endurance de Longue Durée & Résistance Souple**\n\n"
-            "• **Ce que tu travailles :** Ton capital aérobie global et ta capacité à maintenir un effort prolongé (24 min) malgré la fatigue musculaire et nerveuse qui s'installe par paliers.\n"
-            "• **Stratégie :** Ne pars pas trop vite sur les blocs de 3 ou 6 min initiaux. L'enjeu est la régularité sur le bloc central de 9 minutes."
-        )
-    elif "Option 2" in combinaison_choisie:
-        duree_totale_min = 24
-        st.info(
-            "🧠 **Profil Physiologique : Endurance Fondamentale & Maintien Prolongé**\n\n"
-            "• **Ce que tu travailles :** La gestion d'une longue séquence finale de 12 minutes après un échauffement fractionné (3/6/3).\n"
-            "• **Stratégie :** Le gros morceau se situe sur la fin. Tu dois lisser ton effort pour ne pas t'écrouler dans la dernière demi-heure virtuelle."
-        )
-    elif "Option 3" in combinaison_choisie:
-        duree_totale_min = 22
-        st.info(
-            "🧠 **Profil Physiologique : Puissance Aérobie & Variations d'Allure (Fartlek)**\n\n"
-            "• **Ce que tu travailles :** Ta capacité à encaisser des changements de rythme répétés (fractions courtes et longues alternées) tout en gérant de micro-efforts (1.3 min).\n"
-            "• **Stratégie :** Sois très vigilant sur tes transitions : ne récupère pas en marchant trop lentement pour ne pas casser ta dynamique."
-        )
-    else:  # Option 4
-        duree_totale_min = 18
-        st.info(
-            "🧠 **Profil Physiologique : Résistance Dure & Dégressivité d'Effort**\n\n"
-            "• **Ce que tu travailles :** Un effort intense et ramassé (18 min) qui commence par le bloc le plus long (9 min) alors que tu es frais, pour finir en dégressif (6 min puis 3 min).\n"
-            "• **Stratégie :** C'est un profil difficile au démarrage car le bloc de 9 min à froid demande de bien caler sa vitesse dès la 1ère minute !"
-        )
+        seances_dispo = ["Séance du jour (En direct)"]
+        if not df_src.empty and "Seance" in df_src.columns:
+            s_classe = df_src[df_src["Classe"] == classe_active]["Seance"].unique().tolist()
+            seances_dispo = list(set(seances_dispo + s_classe))
 
-    st.markdown("---")
+        seance_filtre = st.selectbox("🎯 Filtrer par Séance :", seances_dispo)
 
-    # 2. Sélection de l'élève
-    df_eleves_classe["Label"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
-    choix_eleve = st.selectbox("🎯 Sélectionner l'élève :", df_eleves_classe["Label"])
-    
-    dossard_actif = int(choix_eleve.split(" - ")[0])
-    eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
-
-    vma = float(eleve_info["VMA"])
-    pct_vma = int(eleve_info["Objectif_pct"])
-    
-    vitesse_ms = (vma * (pct_vma / 100) * 1000) / 3600
-    vitesse_m_min = vitesse_ms * 60
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Élève", eleve_info["Nom"])
-    col2.metric("VMA / Contrat", f"{vma} km/h ({pct_vma}%)")
-    col3.metric("Vitesse Cible", f"{vitesse_m_min:.1f} m / minute")
-
-    st.markdown("---")
-
-    # 3. Saisie minute par minute selon la durée totale de la combinaison
-    st.subheader("⏱️ Saisie des passages minute par minute (Suivi d'effort)")
-    
-    minutes_list = list(range(1, duree_totale_min + 1))
-    minute_active = st.selectbox("Minute de course en cours :", minutes_list)
-    
-    distance_ideale_cumulee = vitesse_m_min * minute_active
-
-    col_saisie1, col_saisie2 = st.columns(2)
-    with col_saisie1:
-        distance_reelle_cumulee = st.number_input(
-            f"Distance réelle cumulée (m) à la minute {minute_active} :", 
-            min_value=0, max_value=6000, value=int(distance_ideale_cumulee), step=25
-        )
-    
-    with col_saisie2:
+    with col_f2:
         st.markdown("<br>", unsafe_allow_html=True)
-        btn_valider = st.button(f"Enregistrer le point de la minute {minute_active}")
+        simuler_rfid = st.button("📡 Simuler un flux de puces RFID en direct")
 
-    ecart = distance_reelle_cumulee - distance_ideale_cumulee
-
-    if btn_valider:
-        nouveau_point = pd.DataFrame([{
+    # Simulation d'un passage RFID pour tester instantanément
+    if simuler_rfid and not df_eleves_classe.empty:
+        eleve_sample = df_eleves_classe.iloc[0]
+        point_rfid = pd.DataFrame([{
             "Classe": classe_active,
-            "Dossard": dossard_actif,
-            "Nom": eleve_info["Nom"],
-            "Minute": f"Min {minute_active}",
-            "Minute_num": minute_active,
-            "Distance_Reelle": distance_reelle_cumulee,
-            "Distance_Ideale": distance_ideale_cumulee,
-            "Ecart_m": ecart,
-            "Temps": datetime.datetime.now().strftime("%H:%M:%S")
+            "Seance": "Séance du jour (En direct)",
+            "Dossard": eleve_sample["Dossard"],
+            "Nom": eleve_sample["Nom"],
+            "Scenario": "Option 1 : 3/6/3 + 9 + 3",
+            "Minute": 5,
+            "Distance_Reelle": 650,
+            "Distance_Ideale": 600,
+            "Ecart_m": 50,
+            "Niveau": evaluer_niveau(50)
         }])
-
         if use_gsheets and conn is not None:
             try:
-                df_actuel = conn.read(worksheet="passages_demifond", ttl=0)
-                df_maj = pd.concat([df_actuel, nouveau_point], ignore_index=True)
-                conn.update(worksheet="passages_demifond", data=df_maj)
+                df_act = conn.read(worksheet="passages_rfid", ttl=0)
+                conn.update(worksheet="passages_rfid", data=pd.concat([df_act, point_rfid], ignore_index=True))
             except Exception:
                 pass
-        
-        if "passages_local" not in st.session_state:
-            st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Nom", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"])
-        
-        st.session_state.passages_local = st.session_state.passages_local[
-            ~((st.session_state.passages_local["Dossard"] == dossard_actif) & (st.session_state.passages_local["Minute_num"] == minute_active))
-        ]
-        st.session_state.passages_local = pd.concat([st.session_state.passages_local, nouveau_point], ignore_index=True)
-        st.success(f"Minute {minute_active} enregistrée !")
+        st.session_state.passages_local = pd.concat([st.session_state.get("passages_local", pd.DataFrame()), point_rfid], ignore_index=True)
+        st.success(f"Flux RFID capté pour {eleve_sample['Nom']} !")
+        st.rerun()
 
-    # --- 4. FEEDBACK EN TEMPS RÉEL (ÉCARTS & COURBES) ---
     st.markdown("---")
-    st.subheader(f"📈 Analyse des Écarts et Courbe d'Allure - {eleve_info['Nom']}")
 
-    try:
-        df_source = conn.read(worksheet="passages_demifond", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
-    except Exception:
-        df_source = st.session_state.get("passages_local", pd.DataFrame())
-
-    if not df_source.empty:
-        df_eleve_cours = df_source[(df_source["Classe"] == classe_active) & (df_source["Dossard"] == dossard_actif)]
+    # Affichage du tableau central de la classe
+    if not df_eleves_classe.empty:
+        st.subheader("📋 Récapitulatif de la classe & Statut des puces")
         
-        if not df_eleve_cours.empty and "Minute_num" in df_eleve_cours.columns:
-            df_eleve_cours = df_eleve_cours.sort_values(by="Minute_num")
+        # Merge des élèves avec leurs derniers passages RFID si disponibles
+        df_recap = df_eleves_classe.copy()
+        df_recap["Vitesse Cible (km/h)"] = (df_recap["VMA"] * (df_recap["Objectif_pct"] / 100)).round(2)
+        
+        st.dataframe(df_recap[["Dossard", "Nom", "VMA", "Objectif_pct", "Vitesse Cible (km/h)"]], use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.subheader(f"📜 Historique des passages (Filtre : {seance_filtre})")
+        
+        if not df_src.empty:
+            df_filtre = df_src[df_src["Classe"] == classe_active]
+            if seance_filtre != "Séance du jour (En direct)":
+                df_filtre = df_filtre[df_filtre["Seance"] == seance_filtre]
             
-            dernier_point = df_eleve_cours.iloc[-1]
-            ecart_actuel = dernier_point["Ecart_m"]
-            
-            col_m1, col_m2, col_m3 = st.columns(3)
-            col_m1.metric("Distance Réelle", f"{dernier_point['Distance_Reelle']} m")
-            col_m2.metric("Distance Idéale (Contrat)", f"{int(dernier_point['Distance_Ideale'])} m")
-            
-            if ecart_actuel > 0:
-                col_m3.metric("Écart au temps", f"+{int(ecart_actuel)} mètres", delta="En avance (Trop rapide)", delta_color="inverse")
-            elif ecart_actuel < 0:
-                col_m3.metric("Écart au temps", f"{int(ecart_actuel)} mètres", delta="En retard (Trop lent)", delta_color="inverse")
+            if not df_filtre.empty:
+                st.dataframe(df_filtre[["Dossard", "Nom", "Scenario", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Niveau"]], use_container_width=True, hide_index=True)
             else:
-                col_m3.metric("Écart au temps", "0 mètre", delta="Parfait aligné sur le contrat !")
-
-            st.markdown("##### 📋 Tableau de marche détaillé par minute :")
-            st.dataframe(df_eleve_cours[["Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"]], use_container_width=True, hide_index=True)
-
-            st.markdown("##### 📉 Graphique comparatif (Allure Réelle vs Allure Idéale) :")
-            df_graph = df_eleve_cours.set_index("Minute")[["Distance_Reelle", "Distance_Ideale"]]
-            st.line_chart(df_graph)
+                st.info("Aucun passage enregistré pour ce filtre.")
         else:
-            st.info("Aucun point de passage enregistré pour cet élève sur cette séance.")
+            st.info("En attente des premiers flux de données des balises et puces RFID...")
     else:
-        st.info("Aucun enregistrement pour l'instant dans la base.")
-else:
-    st.warning("Aucun élève trouvé dans cette classe.")
+        st.warning("Aucun élève enregistré pour cette classe. Passez par l'Espace Professeur pour importer vos listes.")
+
+# =========================================================================
+# 2. FICHE ÉLÈVE & ANALYSE GRAPHIQUE (DOUBLE COURBE & CURSEUR VMA)
+# =========================================================================
+elif mode_navigation == "🏃 Fiche Élève & Analyse Graphique":
+    st.title(f"🏃 Analyse Individuelle - Classe : {classe_active}")
+
+    if not df_eleves_classe.empty:
+        df_eleves_classe["Label"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
+        choix_eleve = st.selectbox("🎯 Sélectionner l'élève :", df_eleves_classe["Label"])
+        
+        dossard_actif = int(choix_eleve.split(" - ")[0])
+        eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
+
+        st.markdown("---")
+
+        # Choix du scénario stratégique
+        scenario = st.selectbox(
+            "🧩 Scénario de course de l'élève :",
+            [
+                "Option 1 : 3/6/3 + 9 + 3 (Total 24 min)",
+                "Option 2 : 3/6/3 + 12 (Total 24 min)",
+                "Option 3 : 6/3 + 9 + 1.3 + 1.3 (Total ~22 min)",
+                "Option 4 : 9 + 6 + 3 (Total 18 min)"
+            ]
+        )
+        duree_max = 24 if "24 min" in scenario else (22 if "22 min" in scenario else 18)
+
+        # --- CURSEUR D'INTENSITÉ LIÉ À LA VMA ---
+        st.markdown("### ⚡ Réglage du Contrat & Intensité")
+        vma_eleve = float(eleve_info["VMA"])
+        pct_initial = int(eleve_info.get("Objectif_pct", 80))
+        
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.metric("VMA de référence", f"{vma_eleve} km/h")
+        with col_c2:
+            pct_vma_curseur = st.slider("Curseur d'intensité (% VMA) :", min_value=50, max_value=110, value=pct_initial, step=5)
+
+        vitesse_m_min = ((vma_eleve * (pct_vma_curseur / 100)) * 1000) / 3600 * 60
+        st.info(f"📌 **Vitesse cible calculée :** {vitesse_m_min:.1f} mètres par minute.")
+
+        st.markdown("---")
+
+        # --- SIMULATION DE SAISIE POUR TESTER LE GRAPHIQUE ---
+        st.subheader("⏱️ Simulation de passage RFID (Minute par minute)")
+        min_test = st.selectbox("Minute test :", list(range(1, duree_max + 1)))
+        dist_reelle_test = st.number_input("Distance réelle relevée par la puce RFID (m) :", min_value=0, max_value=5000, value=int(vitesse_m_min * min_test), step=25)
+        
+        if st.button("Enregistrer ce point RFID"):
+            dist_ideale = vitesse_m_min * min_test
+            ecart = dist_reelle_test - dist_ideale
+            niveau_actuel = evaluer_niveau(ecart)
+            
+            nouveau_point = pd.DataFrame([{
+                "Classe": classe_active,
+                "Seance": f"Scénario ({scenario[:8]})",
+                "Dossard": dossard_actif,
+                "Nom": eleve_info["Nom"],
+                "Scenario": scenario,
+                "Minute": min_test,
+                "Distance_Reelle": dist_reelle_test,
+                "Distance_Ideale": dist_ideale,
+                "Ecart_m": ecart,
+                "Niveau": niveau_actuel
+            }])
+            
+            if use_gsheets and conn is not None:
+                try:
+                    df_a = conn.read(worksheet="passages_rfid", ttl=0)
+                    conn.update(worksheet="passages_rfid", data=pd.concat([df_a, nouveau_point], ignore_index=True))
+                except Exception:
+                    pass
+            
+            st.session_state.passages_local = pd.concat([st.session_state.get("passages_local", pd.DataFrame()), nouveau_point], ignore_index=True)
+            st.success(f"Point de la minute {min_test} enregistré !")
+
+        # --- ZONE DES ÉCARTS & DOUBLE COURBE ---
+        st.markdown("---")
+        st.subheader(f"📈 Analyse & Courbe d'Allure - {eleve_info['Nom']}")
+
+        try:
+            df_src_eleve = conn.read(worksheet="passages_rfid", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
+        except Exception:
+            df_src_eleve = st.session_state.get("passages_local", pd.DataFrame())
+
+        if not df_src_eleve.empty:
+            df_indiv = df_src_eleve[(df_src_eleve["Classe"] == classe_active) & (df_src_eleve["Dossard"] == dossard_actif)]
+            
+            if not df_indiv.empty:
+                df_indiv = df_indiv.sort_values(by="Minute")
+                dernier = df_indiv.iloc[-1]
+                ecart_val = dernier["Ecart_m"]
+                niveau_courant = dernier["Niveau"]
+
+                # Affichage des métriques et du niveau à 4 niveaux
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Distance Réelle", f"{dernier['Distance_Reelle']} m")
+                m2.metric("Distance Idéale", f"{int(dernier['Distance_Ideale'])} m")
+                
+                if ecart_val >= 0:
+                    m3.metric("Écart au temps", f"+{int(ecart_val)} m", delta="En avance", delta_color="inverse")
+                else:
+                    m3.metric("Écart au temps", f"{int(ecart_val)} m", delta="En retard", delta_color="inverse")
+                
+                m4.metric("Niveau évalué", niveau_courant)
+
+                # Graphique à double courbe (Miroir de l'effort)
+                st.markdown("##### 📉 Double Courbe (Allure Idéale vs Allure Réelle Puce RFID) :")
+                df_graph = df_indiv.set_index("Minute")[["Distance_Reelle", "Distance_Ideale"]]
+                st.line_chart(df_graph)
+            else:
+                st.info("Aucun passage RFID enregistré pour cet élève.")
+        else:
+            st.info("Base de données vide pour l'instant.")
+    else:
+        st.warning("Aucun élève dans cette classe.")
+
+# =========================================================================
+# 3. ESPACE PROFESSEUR (ADMIN / IMPORT)
+# =========================================================================
+elif mode_navigation == "🔒 Espace Professeur (Admin / Import)":
+    st.title(f"🔒 Administration - Classe : {classe_active}")
+    code_pin = st.text_input("Code professeur :", type="password")
+    
+    if code_pin == "EPS2026":
+        st.success("Accès administrateur déverrouillé.")
+        
+        st.subheader("📥 Importer vos listes (6e4, 5e5, 5e7, 4e5, 3e5, 3eA)")
+        uploaded_file = st.file_uploader("Fichier CSV ou Excel (Colonnes : Classe, Dossard, Nom, VMA, Objectif_pct)", type=["csv", "xlsx"])
+        
+        if uploaded_file is not None:
+            try:
+                df_upl = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+                st.write("Aperçu :", df_upl.head(3))
+                if st.button("Valider et injecter dans Google Sheets"):
+                    if use_gsheets and conn is not None:
+                        conn.update(worksheet="eleves", data=df_upl)
+                        st.success("Base élèves mise à jour avec succès dans Sheets !")
+                        st.rerun()
+                    else:
+                        st.session_state.eleves = df_upl
+                        st.success("Base mise à jour en local !")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Erreur : {e}")
+
+        st.markdown("---")
+        st.subheader(f"📊 Édition manuelle - Classe {classe_active}")
+        edited = st.data_editor(df_eleves_classe, num_rows="dynamic")
+        
+        if st.button("Enregistrer les modifications"):
+            df_autres = df_eleves[df_eleves["Classe"] != classe_active] if "Classe" in df_eleves.columns else pd.DataFrame()
+            df_total = pd.concat([df_autres, edited], ignore_index=True)
+            if use_gsheets and conn is not None:
+                conn.update(worksheet="eleves", data=df_total)
+                st.success("Synchronisé avec Google Sheets !")
+            else:
+                st.session_state.eleves = df_total
+                st.success("Enregistré en local !")
+            st.rerun()
+    else:
+        st.warning("Saisissez le code PIN (`EPS2026`) pour accéder aux réglages.")
