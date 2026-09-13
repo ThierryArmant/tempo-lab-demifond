@@ -28,6 +28,15 @@ st.markdown("""
         color: #ffffff !important;
     }
     
+    /* Correction : Forcer les textes et instructions du File Uploader en blanc lisible */
+    [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] small, [data-testid="stFileUploader"] span {
+        color: #ffffff !important;
+    }
+    [data-testid="stFileUploader"] section {
+        background-color: #16181d !important;
+        border: 2px dashed #58a6ff !important;
+    }
+    
     /* Style des conteneurs / cartes métriques bien détachés */
     div[data-testid="stMetric"], div.stAlert {
         background-color: #16181d;
@@ -93,7 +102,7 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Sélectionnez votre dossard pour voir votre contrat d'allure et valider vos passages.")
+    st.info("Sélectionnez votre dossard pour voir votre contrat d'allure, valider vos passages et analyser vos courbes.")
 
     if not df_eleves_classe.empty:
         dossard_actif = st.selectbox("Sélectionnez votre dossard :", df_eleves_classe["Dossard"])
@@ -115,16 +124,17 @@ if mode == "Espace Élève / Terrain":
         # Simulateur de passage
         st.subheader("📡 Simulateur de passage")
         col_sim1, col_sim2, col_sim3, col_sim4 = st.columns(4)
-        heure_actuelle = datetime.datetime.now().strftime("%H:%M:%S")
-        date_actuelle = datetime.datetime.now().strftime("%Y-%m-%d")
+        heure_actuelle_obj = datetime.datetime.now()
+        heure_str = heure_actuelle_obj.strftime("%H:%M:%S")
+        date_str = heure_actuelle_obj.strftime("%Y-%m-%d")
         
         def enregistrer_passage(plot_nom):
             nouveau_passage = pd.DataFrame([{
                 "Classe": classe_active,
                 "Dossard": dossard_actif,
                 "Plot": plot_nom,
-                "Heure": heure_actuelle,
-                "Date": date_actuelle
+                "Heure": heure_str,
+                "Date": date_str
             }])
             
             try:
@@ -147,8 +157,10 @@ if mode == "Espace Élève / Terrain":
         if col_sim4.button("Tournant 75m"):
             enregistrer_passage("75m")
 
-        # Historique
-        st.markdown("### 📋 Historique de vos passages")
+        # --- MODULE GRAPHIQUE D'ANALYSE D'ALLURE ---
+        st.markdown("---")
+        st.subheader("📈 Courbe d'analyse de course et régularité")
+        
         try:
             df_passages_actuel = conn.read(worksheet="passages", ttl=0)
         except Exception:
@@ -158,6 +170,21 @@ if mode == "Espace Élève / Terrain":
             df_eleve = df_passages_actuel[(df_passages_actuel["Classe"] == classe_active) & (df_passages_actuel["Dossard"] == dossard_actif)]
             if not df_eleve.empty:
                 st.table(df_eleve.tail(5))
+                
+                # Transformation pour tracer un graphique simple des passages chronologiques
+                # On associe un ordre numérique aux plots pour l'axe des X
+                mapping_plots = {"Départ": 0, "25m": 25, "50m": 50, "75m": 75}
+                df_eleve_graph = df_eleve.copy()
+                df_eleve_graph["Distance_Metres"] = df_eleve_graph["Plot"].map(mapping_plots)
+                df_eleve_graph = df_eleve_graph.sort_values(by="Heure")
+                
+                if len(df_eleve_graph) > 1:
+                    st.write("Évolution des passages enregistrés (Chronomètre par plot) :")
+                    # Affichage d'un graphique natif Streamlit clair et contrasté
+                    chart_data = df_eleve_graph.set_index("Heure")[["Distance_Metres"]]
+                    st.line_chart(chart_data)
+                else:
+                    st.info("Validez au moins 2 plots pour visualiser la courbe de progression de course.")
             else:
                 st.write("Aucun passage enregistré pour ce dossard.")
         else:
@@ -173,7 +200,6 @@ elif mode == "Espace Professeur (Sécurisé)":
     if code_pin == "EPS2026":
         st.success("Accès administrateur déverrouillé.")
         
-        # --- NOUVEAU : IMPORTATION DE FICHIER ÉLÈVES (CSV / EXCEL) ---
         st.subheader("📥 Importer une liste d'élèves (Fichier CSV ou Excel)")
         uploaded_file = st.file_uploader("Glissez-déposez votre fichier ici (Colonnes attendues : Classe, Dossard, Nom, VMA, Objectif_pct, Distance_cible_m)", type=["csv", "xlsx"])
         
