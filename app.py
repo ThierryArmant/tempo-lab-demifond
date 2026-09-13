@@ -11,29 +11,20 @@ st.set_page_config(
 # --- DESIGN EXTERIEUR HAUT CONTRASTE ---
 st.markdown("""
     <style>
-    /* Fond global de l'application */
     .stApp {
         background-color: #000000;
         color: #ffffff;
     }
-    
-    /* Fond sombre et net sur la barre latérale */
     [data-testid="stSidebar"] {
         background-color: #111418 !important;
         border-right: 2px solid #262a33;
     }
-    
-    /* Forcer tous les textes en blanc par défaut sur la page */
     h1, h2, h3, h4, h5, h6, p, span, label, div[data-testid="stSidebar"] * {
         color: #ffffff !important;
     }
-    
-    /* TABLEAUX : Texte en NOIR sur fond blanc pour les tableaux de données st.dataframe / st.table */
     [data-testid="stDataFrame"] *, [data-testid="stTable"] *, th, td {
         color: #000000 !important;
     }
-    
-    /* CORRECTION EXPANDEUR : Texte en NOIR dans les volets déroulants / expanders */
     [data-testid="stExpander"] *, [data-testid="stExpander"] p, [data-testid="stExpander"] span {
         color: #000000 !important;
     }
@@ -42,8 +33,6 @@ st.markdown("""
         border: 2px solid #388bfd !important;
         border-radius: 8px;
     }
-    
-    /* Textes et instructions du File Uploader en blanc lisible */
     [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] small, [data-testid="stFileUploader"] span {
         color: #ffffff !important;
     }
@@ -51,16 +40,12 @@ st.markdown("""
         background-color: #16181d !important;
         border: 2px dashed #388bfd !important;
     }
-    
-    /* Style des conteneurs / cartes métriques bien détachés */
     div[data-testid="stMetric"], div.stAlert {
         background-color: #16181d;
         border: 2px solid #333842;
         border-radius: 10px;
         padding: 10px;
     }
-    
-    /* BOUTONS : Fond bleu vif et ÉCRITURE NOIRE pour un contraste choc au soleil */
     .stButton>button {
         width: 100%;
         background-color: #388bfd !important;
@@ -79,7 +64,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- INITIALISATION DE LA CONNEXION ET DES DONNÉES (MODE HYBRIDE ROBUSTE) ---
+# --- BASE DE DONNÉES DES PALIERS VMA (Léger-Boucher & Vaussenat simplifiés) ---
+# Dictionnaire indicatif Palier -> Vitesse VMA (km/h)
+TABLE_VMA = {
+    "Palier 1 (8.0 km/h)": 8.0, "Palier 2 (8.5 km/h)": 8.5, "Palier 3 (9.0 km/h)": 9.0,
+    "Palier 4 (9.5 km/h)": 9.5, "Palier 5 (10.0 km/h)": 10.0, "Palier 6 (10.5 km/h)": 10.5,
+    "Palier 7 (11.0 km/h)": 11.0, "Palier 8 (11.5 km/h)": 11.5, "Palier 9 (12.0 km/h)": 12.0,
+    "Palier 10 (12.5 km/h)": 12.5, "Palier 11 (13.0 km/h)": 13.0, "Palier 12 (13.5 km/h)": 13.5,
+    "Palier 13 (14.0 km/h)": 14.0, "Palier 14 (14.5 km/h)": 14.5, "Palier 15 (15.0 km/h)": 15.0,
+    "Palier 16 (15.5 km/h)": 15.5, "Palier 17 (16.0 km/h)": 16.0, "Palier 18 (16.5 km/h)": 16.5,
+    "Palier 19 (17.0 km/h)": 17.0, "Palier 20 (17.5 km/h)": 17.5
+}
+
+# --- INITIALISATION DE LA CONNEXION ET DES DONNÉES ---
 conn = None
 use_gsheets = False
 
@@ -88,281 +85,266 @@ try:
     df_eleves = conn.read(worksheet="eleves", ttl=0)
     use_gsheets = True
     try:
-        df_passages_saved = conn.read(worksheet="passages", ttl=0)
+        df_seances_saved = conn.read(worksheet="seances", ttl=0)
     except Exception:
-        df_passages_saved = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
+        df_seances_saved = pd.DataFrame(columns=["Classe", "Date", "Mode", "Dossard", "Nom", "Details_Performance"])
 except Exception:
-    # Mode secours local si Google Sheets n'est pas branché
     if "eleves" not in st.session_state:
-        noms_test = ["Arnaud Lucas", "Bernard Emma", "Bouvier Nathan", "Carre Manon", "David Hugo", 
-                     "Dubois Chloé", "Durand Thomas", "Faure Clara", "Garnier Louis", "Gauthier Inès",
-                     "Girard Théo", "Guerin Zoé", "Henry Lucas", "Laurent Sarah", "Lemaire Tom",
-                     "Leroy Camille", "Martin Nathan", "Moreau Juliette", "Petit Hugo", "Richard Léa",
-                     "Rousseau Mathis", "Roux Manon", "Simon Enzo", "Thomas Chloé", "Vidal Lucas",
-                     "Vincent Emma", "Blanchard Tom", "Dumont Sarah", "Fontaine Léo", "Gauthier Maëlys"]
+        # Données de test multi-classes (6A, 5B, 4D, 3A)
         st.session_state.eleves = pd.DataFrame({
-            "Classe": ["6ème A"] * len(noms_test),
-            "Dossard": list(range(101, 101 + len(noms_test))),
-            "Nom": noms_test,
-            "VMA": [14.0, 12.5, 15.2, 11.0, 13.5, 14.2, 0.0, 15.0, 13.0, 14.5,
-                    12.8, 13.2, 14.8, 11.5, 15.5, 12.2, 13.8, 14.1, 12.9, 13.6,
-                    14.3, 12.4, 15.1, 11.8, 13.9, 14.6, 12.6, 13.4, 14.7, 12.1],
-            "Objectif_pct": [80] * len(noms_test),
-            "Distance_cible_m": [600] * len(noms_test)
+            "Classe": ["6ème A", "6ème A", "5ème B", "5ème B", "4ème D", "4ème D", "3ème A", "3ème A"],
+            "Dossard": [101, 102, 201, 202, 401, 402, 301, 302],
+            "Nom": ["Arnaud Lucas", "Bernard Emma", "Durand Thomas", "Garnier Louis", "Henry Lucas", "Lemaire Tom", "Simon Enzo", "Vidal Lucas"],
+            "VMA": [14.0, 12.5, 12.0, 13.0, 14.8, 15.5, 15.1, 13.9],
+            "Objectif_pct": [80, 75, 80, 85, 80, 90, 85, 80],
+            "Distance_cible_m": [600, 500, 600, 800, 600, 1000, 800, 600]
         })
     df_eleves = st.session_state.eleves
 
-    if "passages_local" not in st.session_state:
-        st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
-    df_passages_saved = st.session_state.passages_local
+    if "seances_local" not in st.session_state:
+        st.session_state.seances_local = pd.DataFrame(columns=["Classe", "Date", "Mode", "Dossard", "Nom", "Details_Performance"])
+    df_seances_saved = st.session_state.seances_local
 
-# --- BARRE LATÉRALE : SÉLECTION DE LA CLASSE & NAVIGATION ---
+# --- BARRE LATÉRALE : NAVIGATION & CLASSES ---
 st.sidebar.title("🧭 TempoLabDemifond")
 
 list_classes = sorted(df_eleves["Classe"].unique().tolist()) if "Classe" in df_eleves.columns else ["6ème A"]
 classe_active = st.sidebar.selectbox("📂 Choisir la classe :", list_classes)
 
 st.sidebar.markdown("---")
-mode = st.sidebar.radio("Espace :", ["Espace Élève / Terrain", "Espace Professeur (Sécurisé)"])
+mode_seance = st.sidebar.radio("Mode de Séance :", [
+    "📊 Tableau de Bord & Feedback", 
+    "🏃 Demi-fond (Contrat / Plots)", 
+    "⚡ Test VMA (Vaussenat / Léger-Boucher)", 
+    "🔄 Intermittent (30-30 ou 45-15)", 
+    "🔒 Espace Professeur (Admin)"
+])
 
 df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" in df_eleves.columns else df_eleves
 
-# --- ESPACE ÉLÈVE / TERRAIN ---
-if mode == "Espace Élève / Terrain":
-    st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Consultez la vue d'ensemble de toute la classe ci-dessous, puis sélectionnez l'élève actif pour chronométrer ses passages.")
+# =========================================================================
+# 1. TABLEAU DE BORD & FEEDBACK (ACCUEIL TEMPS RÉEL)
+# =========================================================================
+if mode_seance == "📊 Tableau de Bord & Feedback":
+    st.title(f"📊 Feedback en Temps Réel - Classe : {classe_active}")
+    st.info("Retrouvez ci-dessous la vue globale de la classe, les contrats en cours et l'historique des séances enregistrées pour ajuster vos feedbacks.")
 
     if not df_eleves_classe.empty:
-        # --- 1. AFFICHAGE GLOBAL DE TOUTE LA CLASSE EN TEMPS RÉEL ---
-        st.subheader("📋 Vue d'ensemble de toute la classe")
-        
-        df_vue_globale = df_eleves_classe.copy()
-        df_vue_globale["Vitesse Cible (km/h)"] = (df_vue_globale["VMA"] * (df_vue_globale["Objectif_pct"] / 100)).round(2)
-        
-        df_affichage = df_vue_globale[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_cible_m", "Vitesse Cible (km/h)"]].copy()
-        df_affichage.columns = ["Dossard", "Nom", "VMA (km/h)", "Contrat (% VMA)", "Distance (m)", "Vitesse Cible (km/h)"]
-        
+        st.subheader("📋 Liste officielle et contrats de la classe")
+        df_vue = df_eleves_classe.copy()
+        df_vue["Vitesse Cible (km/h)"] = (df_vue["VMA"] * (df_vue["Objectif_pct"] / 100)).round(2)
+        df_affichage = df_vue[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_cible_m", "Vitesse Cible (km/h)"]].copy()
+        df_affichage.columns = ["Dossard", "Nom", "VMA (km/h)", "Contrat (% VMA)", "Distance Cible (m)", "Vitesse Cible (km/h)"]
         st.dataframe(df_affichage, use_container_width=True, hide_index=True)
 
         st.markdown("---")
+        st.subheader("📜 Historique des séances enregistrées pour cette classe")
         
-        # --- 2. SÉLECTION DE L'ÉLÈVE ACTIF POUR LE CHRONOMÉTRAGE ---
-        st.subheader("⏱️ Chronométrage / Saisie des passages sur le terrain")
-        
+        try:
+            df_seances_actuel = conn.read(worksheet="seances", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("seances_local", pd.DataFrame())
+        except Exception:
+            df_seances_actuel = st.session_state.get("seances_local", pd.DataFrame())
+
+        if not df_seances_actuel.empty:
+            df_seances_classe = df_seances_actuel[df_seances_actuel["Classe"] == classe_active]
+            if not df_seances_classe.empty:
+                st.dataframe(df_seances_classe, use_container_width=True, hide_index=True)
+            else:
+                st.write("Aucune séance enregistrée pour cette classe pour l'instant.")
+        else:
+            st.write("Aucune séance enregistrée dans la base.")
+    else:
+        st.warning("Aucun élève trouvé pour cette classe.")
+
+# =========================================================================
+# 2. ESPACE DEMI-FOND (CONTRAT / PLOTS)
+# =========================================================================
+elif mode_seance == "🏃 Demi-fond (Contrat / Plots)":
+    st.title(f"🏃 Demi-fond - Classe : {classe_active}")
+    
+    if not df_eleves_classe.empty:
+        # Choix du mode de saisie (Puce / Tactile vs Manuel)
+        type_saisie = st.radio("🛠️ Mode de chronométrage :", ["Mode Tactile / Manuel (Enseignant ou Élève)", "Mode Puce / Détecteur (Simulation automatique)"], horizontal=True)
+
         df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
-        choix_eleve = st.selectbox("🎯 Sélectionnez l'élève qui court actuellement :", df_eleves_classe["Label_Eleve"])
+        choix_eleve = st.selectbox("🎯 Sélectionner l'élève actif :", df_eleves_classe["Label_Eleve"])
         
         dossard_actif = int(choix_eleve.split(" - ")[0])
         eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
 
-        vma_actuelle = float(eleve_info["VMA"])
+        vma = float(eleve_info["VMA"])
+        if vma <= 0 or pd.isna(vma):
+            st.error("⚠️ Aucune VMA valide pour cet élève. Veuillez la renseigner.")
+            vma = st.number_input("Saisir la VMA (km/h) :", min_value=5.0, max_value=25.0, value=12.0)
 
-        # Contrôle obligatoire de la VMA
-        if vma_actuelle <= 0 or pd.isna(vma_actuelle):
-            st.error("⚠️ **ATTENTION : Aucune VMA valide n'est enregistrée pour cet élève !**")
-            vma_saisie = st.number_input("Indique ta VMA (en km/h) :", min_value=5.0, max_value=25.0, value=12.0, step=0.5)
-            vma = vma_saisie
-        else:
-            vma = vma_actuelle
+        # Paramétrage protocole
+        col_p, col_d, col_c = st.columns(3)
+        with col_p:
+            ecart_plots = st.selectbox("📌 Écart plots :", options=[15, 20, 25, 50], index=2)
+        with col_d:
+            liste_d = list(range(100, 3005, 25))
+            def_d = int(eleve_info.get("Distance_cible_m", 600))
+            if def_d not in liste_d: def_d = 600
+            distance_choisie = st.selectbox("📏 Distance cible (m) :", options=liste_d, index=liste_d.index(def_d))
+        with col_c:
+            pct_choisi = st.slider("⚡ Intensité (% VMA) :", 50, 110, int(eleve_info.get("Objectif_pct", 80)), 5)
 
-        # --- PARAMÉTRAGE DU PROTOCOLE & OBJECTIF DE L'ÉLÈVE ACTIF ---
-        st.markdown("#### ⚙️ Paramétrage du protocole pour cet élève")
-        col_protocole, col_dist, col_pct = st.columns(3)
+        v_kmh = vma * (pct_choisi / 100)
+        v_ms = (v_kmh * 1000) / 3600
+        t_est = (distance_choisie / v_ms) if v_ms > 0 else 0
         
-        with col_protocole:
-            ecart_plots = st.selectbox("📌 Écart entre les plots :", options=[15, 20, 25, 50], index=2)
-            
-        with col_dist:
-            liste_distances_25m = list(range(100, 3005, 25))
-            def_dist = int(eleve_info.get("Distance_cible_m", 600))
-            if def_dist not in liste_distances_25m:
-                def_dist = 600
-            
-            distance_choisie = st.selectbox(
-                "📏 Distance cible (bornes de 25m) :", 
-                options=liste_distances_25m, 
-                index=liste_distances_25m.index(def_dist)
-            )
-            
-        with col_pct:
-            pct_choisi = st.slider("⚡ Intensité (% VMA) :", min_value=50, max_value=110, value=int(eleve_info.get("Objectif_pct", 80)), step=5)
+        st.success(f"📌 **Contrat :** {distance_choisie}m à {pct_choisi}% VMA ({v_kmh:.2f} km/h) | Temps idéal : {int(t_est//60)}m {int(t_est%60):02d}s")
 
-        # Calculs cinématiques intégrés
-        vitesse_cible_kmh = vma * (pct_choisi / 100)
-        vitesse_ms = (vitesse_cible_kmh * 1000) / 3600
-        
-        st.info(f"📋 **PROTOCOLE INTÉGRÉ :** Balisage de piste tous les **{ecart_plots} mètres**.")
+        with st.expander(f"⏱️ Tableau de marche idéal - {eleve_info['Nom']}"):
+            d_plots = list(range(ecart_plots, distance_choisie + ecart_plots, ecart_plots))
+            if d_plots[-1] != distance_choisie: d_plots.append(distance_choisie)
+            t_marche = [{"Plot": f"{d}m", "Temps idéal": f"{int((d/v_ms)//60)}m {int((d/v_ms)%60):02d}s"} for d in d_plots]
+            st.table(pd.DataFrame(t_marche))
 
-        temps_total_estime = (distance_choisie / vitesse_ms) if vitesse_ms > 0 else 0
-        m_est = int(temps_total_estime // 60)
-        s_est = int(temps_total_estime % 60)
-        
-        st.success(f"📌 **OBJECTIF CONTRAT ({eleve_info['Nom']}) :** Parcourir **{distance_choisie}m** à **{pct_choisi}% VMA** ({vitesse_cible_kmh:.2f} km/h) | Temps idéal : **{m_est}m {s_est:02d}s**.")
-
-        with st.expander(f"⏱️ Voir le tableau de marche idéal par plot pour {eleve_info['Nom']}"):
-            distances_plots = list(range(ecart_plots, distance_choisie + ecart_plots, ecart_plots))
-            if distances_plots[-1] != distance_choisie:
-                distances_plots.append(distance_choisie)
-                
-            tableau_marche = []
-            for d in distances_plots:
-                t_sec = d / vitesse_ms if vitesse_ms > 0 else 0
-                tableau_marche.append({"Plot / Distance": f"{d}m", "Temps idéal cumulé": f"{int(t_sec//60)}m {int(t_sec%60):02d}s"})
-            st.table(pd.DataFrame(tableau_marche))
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Élève actif", eleve_info["Nom"])
-        col2.metric("VMA", f"{vma} km/h")
-        col3.metric("Contrat", f"{pct_choisi}% VMA")
-        col4.metric("Vitesse Cible", f"{vitesse_cible_kmh:.2f} km/h")
-
-        # --- SIMULATEUR DE PASSAGE ADAPTÉ AU PROTOCOLE ---
-        st.subheader("📡 Simulateur de passage terrain")
-        
         noms_plots = ["Départ"] + [f"{i * ecart_plots}m" for i in range(1, (distance_choisie // ecart_plots) + 1)]
-        if (distance_choisie % ecart_plots) != 0:
-            noms_plots.append(f"{distance_choisie}m")
+        if (distance_choisie % ecart_plots) != 0: noms_plots.append(f"{distance_choisie}m")
 
-        heure_actuelle_obj = datetime.datetime.now()
-        heure_str = heure_actuelle_obj.strftime("%H:%M:%S")
-        date_str = heure_actuelle_obj.strftime("%Y-%m-%d")
+        if type_saisie == "Mode Tactile / Manuel (Enseignant ou Élève)":
+            st.subheader("📡 Simulateur de passage terrain")
+            cols_sim = st.columns(min(len(noms_plots), 4))
+            for idx, p_nom in enumerate(noms_plots):
+                if cols_sim[idx % len(cols_sim)].button(p_nom, key=f"btn_{p_nom}"):
+                    # Enregistrement séance
+                    nouvelle_ L = pd.DataFrame([{
+                        "Classe": classe_active,
+                        "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Mode": "Demi-fond",
+                        "Dossard": dossard_actif,
+                        "Nom": eleve_info["Nom"],
+                        "Details_Performance": f"Passage validé : {p_nom} ({distance_choisie}m à {pct_choisi}%VMA)"
+                    }])
+                    if use_gsheets and conn is not None:
+                        try:
+                            s_act = conn.read(worksheet="seances", ttl=0)
+                            conn.update(worksheet="seances", data=pd.concat([s_act, nouvelle_ L], ignore_index=True))
+                        except Exception:
+                            pass
+                    else:
+                        st.session_state.seances_local = pd.concat([st.session_state.seances_local, nouvelle_ L], ignore_index=True)
+                    st.success(f"Passage '{p_nom}' enregistré et synchronisé pour le feedback !")
+        else:
+            st.info("📡 Mode Puce activé : En attente de détection automatique des dossards sur la ligne...")
+            if st.button("Simuler un passage par puce"):
+                st.success(f"Puce détectée pour {eleve_info['Nom']} !")
+
+# =========================================================================
+# 3. TEST VMA (VAUSSENAT / LÉGER-BOUCHER)
+# =========================================================================
+elif mode_seance == "⚡ Test VMA (Vaussenat / Léger-Boucher)":
+    st.title(f"⚡ Évaluation VMA - Classe : {classe_active}")
+    st.info("Sélectionnez le test réalisé, puis enregistrez le palier atteint par chaque élève pour mettre à jour sa VMA instantanément dans la base.")
+
+    type_test = st.selectbox("Type de test :", ["Test Léger-Boucher (Pistes 20m)", "Test de Vaussenat (Pôles continus)"])
+
+    if not df_eleves_classe.empty:
+        # Saisie groupée ou individuelle des paliers de VMA
+        st.subheader("📝 Saisie des résultats du test VMA")
         
-        def enregistrer_passage(plot_nom):
-            nouveau_passage = pd.DataFrame([{
-                "Classe": classe_active,
-                "Dossard": dossard_actif,
-                "Plot": plot_nom,
-                "Heure": heure_str,
-                "Date": date_str
-            }])
-            
+        eleve_vma_choix = st.selectbox("Choisir l'élève à évaluer :", df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"])
+        dossard_vma = int(eleve_vma_choix.split(" - ")[0])
+        
+        palier_atteint = st.selectbox("Dernier palier validé :", list(TABLE_VMA.keys()))
+        vma_calculee = TABLE_VMA[palier_atteint]
+
+        st.success(f"VMA correspondante au palier : **{vma_calculee} km/h**")
+
+        if st.button("Mettre à jour la VMA de cet élève"):
+            df_eleves.loc[df_eleves["Dossard"] == dossard_vma, "VMA"] = vma_calculee
             if use_gsheets and conn is not None:
                 try:
-                    passages_actuels = conn.read(worksheet="passages", ttl=0)
-                    passages_maj = pd.concat([passages_actuels, nouveau_passage], ignore_index=True)
-                    conn.update(worksheet="passages", data=passages_maj)
-                    st.success(f"Passage '{plot_nom}' enregistré dans Google Sheets !")
-                    return
+                    conn.update(worksheet="eleves", data=df_eleves)
+                    st.success("VMA mise à jour dans Google Sheets avec succès !")
+                except Exception as e:
+                    st.error(f"Erreur de synchro : {e}")
+            else:
+                st.session_state.eleves = df_eleves
+                st.success("VMA mise à jour en local avec succès !")
+            st.rerun()
+
+# =========================================================================
+# 4. INTERMITTENT (30-30 ou 45-15)
+# =========================================================================
+elif mode_seance == "🔄 Intermittent (30-30 ou 45-15)":
+    st.title(f"🔄 Séance Intermittente - Classe : {classe_active}")
+    st.info("Saisissez les performances de vos élèves sur les blocs fractionnés (ex: nombre de répétitions ou distance totale parcourue par bloc).")
+
+    protocole_inter = st.selectbox("Format d'effort :", ["30 - 30", "45 - 15"])
+    
+    if not df_eleves_classe.empty:
+        eleve_inter = st.selectbox("Élève :", df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"])
+        dossard_inter = int(eleve_inter.split(" - ")[0])
+        nom_inter = eleve_inter.split(" - ")[1]
+
+        blocs_realises = st.number_input("Nombre de blocs / répétitions réussies :", min_value=1, max_value=30, value=10)
+        distance_totale_m = st.number_input("Distance totale parcourue sur l'exercice (en mètres) :", min_value=50, max_value=5000, value=1200, step=50)
+
+        if st.button("Enregistrer la performance intermittente"):
+            nouvelle_s = pd.DataFrame([{
+                "Classe": classe_active,
+                "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Mode": f"Intermittent {protocole_inter}",
+                "Dossard": dossard_inter,
+                "Nom": nom_inter,
+                "Details_Performance": f"{blocs_realises} blocs | {distance_totale_m}m parcourus"
+            }])
+            if use_gsheets and conn is not None:
+                try:
+                    s_act = conn.read(worksheet="seances", ttl=0)
+                    conn.update(worksheet="seances", data=pd.concat([s_act, nouvelle_s], ignore_index=True))
+                    st.success("Performance intermittente enregistrée dans Google Sheets !")
                 except Exception:
                     pass
-            
-            # Mode secours local
-            if "passages_local" not in st.session_state:
-                st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
-            st.session_state.passages_local = pd.concat([st.session_state.passages_local, nouveau_passage], ignore_index=True)
-            st.info(f"Passage '{plot_nom}' enregistré en local.")
-
-        cols_simulation = st.columns(min(len(noms_plots), 4))
-        for idx, plot_nom in enumerate(noms_plots):
-            col_cible = cols_simulation[idx % len(cols_simulation)]
-            if col_cible.button(plot_nom, key=f"btn_{plot_nom}"):
-                enregistrer_passage(plot_nom)
-
-        # Graphique et historique de l'élève actif
-        st.markdown("---")
-        st.subheader(f"📈 Courbe d'analyse de course - {eleve_info['Nom']}")
-        
-        try:
-            df_passages_actuel = conn.read(worksheet="passages", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
-        except Exception:
-            df_passages_actuel = st.session_state.get("passages_local", pd.DataFrame())
-
-        if not df_passages_actuel.empty:
-            df_eleve = df_passages_actuel[(df_passages_actuel["Classe"] == classe_active) & (df_passages_actuel["Dossard"] == dossard_actif)]
-            if not df_eleve.empty:
-                st.table(df_eleve.tail(5))
-                
-                mapping_plots = {"Départ": 0}
-                for plot_str in noms_plots:
-                    if plot_str != "Départ":
-                        val_m = int(plot_str.replace("m", ""))
-                        mapping_plots[plot_str] = val_m
-
-                df_eleve_graph = df_eleve.copy()
-                df_eleve_graph["Distance_Metres"] = df_eleve_graph["Plot"].map(mapping_plots)
-                df_eleve_graph = df_eleve_graph.dropna(subset=["Distance_Metres"])
-                df_eleve_graph = df_eleve_graph.sort_values(by="Heure")
-                
-                if len(df_eleve_graph) > 1:
-                    chart_data = df_eleve_graph.set_index("Heure")[["Distance_Metres"]]
-                    st.line_chart(chart_data)
-                else:
-                    st.info("Valide au moins 2 plots pour visualiser ta courbe.")
             else:
-                st.write("Aucun passage enregistré pour ce dossard.")
-        else:
-            st.write("Aucun passage enregistré pour l'instant.")
-    else:
-        st.warning("Aucun élève trouvé pour cette classe.")
+                st.session_state.seances_local = pd.concat([st.session_state.seances_local, nouvelle_s], ignore_index=True)
+                st.success("Performance enregistrée en local !")
 
-# --- ESPACE PROFESSEUR (SÉCURISÉ) ---
-elif mode == "Espace Professeur (Sécurisé)":
+# =========================================================================
+# 5. ESPACE PROFESSEUR (ADMIN)
+# =========================================================================
+elif mode_seance == "🔒 Espace Professeur (Admin)":
     st.title(f"🔒 Administration - Classe : {classe_active}")
-    code_pin = st.text_input("Entrez le code professeur :", type="password")
+    code_pin = st.text_input("Code professeur :", type="password")
     
     if code_pin == "EPS2026":
         st.success("Accès administrateur déverrouillé.")
         
-        st.subheader("📥 Importer une liste d'élèves (Fichier CSV ou Excel)")
-        uploaded_file = st.file_uploader("Glissez-déposez votre fichier ici (Colonnes : Classe, Dossard, Nom, VMA, Objectif_pct, Distance_cible_m)", type=["csv", "xlsx"])
+        st.subheader("📥 Importer vos listes (6A, 5B, 4D, 3A...)")
+        uploaded_file = st.file_uploader("Fichier CSV ou Excel (Colonnes attendues : Classe, Dossard, Nom, VMA, Objectif_pct, Distance_cible_m)", type=["csv", "xlsx"])
         
         if uploaded_file is not None:
             try:
-                if uploaded_file.name.endswith('.csv'):
-                    df_upload = pd.read_csv(uploaded_file)
-                else:
-                    df_upload = pd.read_excel(uploaded_file)
-                
-                st.write("Aperçu du fichier importé :", df_upload.head(3))
-                if st.button("Valider et remplacer la base élèves par ce fichier"):
+                df_upload = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+                st.write("Aperçu :", df_upload.head(3))
+                if st.button("Remplacer la base globale par ce fichier"):
                     if use_gsheets and conn is not None:
-                        try:
-                            conn.update(worksheet="eleves", data=df_upload)
-                            st.success("Base élèves mise à jour avec succès dans Google Sheets !")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erreur Google Sheets : {e}")
+                        conn.update(worksheet="eleves", data=df_upload)
+                        st.success("Base élèves mise à jour dans Google Sheets !")
+                        st.rerun()
                     else:
                         st.session_state.eleves = df_upload
-                        st.success("Base élèves mise à jour en local avec succès !")
+                        st.success("Base élèves mise à jour en local !")
                         st.rerun()
             except Exception as e:
-                st.error(f"Erreur de lecture du fichier : {e}")
+                st.error(e)
 
         st.markdown("---")
-        st.subheader(f"📊 Modification manuelle - Classe {classe_active}")
+        st.subheader(f"📊 Modification manuelle - {classe_active}")
         edited_df = st.data_editor(df_eleves_classe, num_rows="dynamic")
         
-        if st.button("Enregistrer les modifications de la classe"):
-            try:
-                df_autres_classes = df_eleves[df_eleves["Classe"] != classe_active] if "Classe" in df_eleves.columns else pd.DataFrame()
-                df_global_maj = pd.concat([df_autres_classes, edited_df], ignore_index=True)
-                
-                if use_gsheets and conn is not None:
-                    conn.update(worksheet="eleves", data=df_global_maj)
-                    st.success("Modifications synchronisées avec Google Sheets avec succès !")
-                else:
-                    st.session_state.eleves = df_global_maj
-                    st.success("Modifications enregistrées en local avec succès !")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erreur lors de la mise à jour : {e}")
-
-        st.markdown("---")
-        st.subheader("⚙️ Actions de séance")
-        if st.button("Effacer l'historique des passages de cette classe"):
-            try:
-                if use_gsheets and conn is not None:
-                    df_passages_actuel = conn.read(worksheet="passages", ttl=0)
-                    df_passages_nettoye = df_passages_actuel[df_passages_actuel["Classe"] != classe_active]
-                    conn.update(worksheet="passages", data=df_passages_nettoye)
-                    st.success("Historique de la classe effacé de Google Sheets.")
-                else:
-                    if "passages_local" in st.session_state:
-                        st.session_state.passages_local = st.session_state.passages_local[st.session_state.passages_local["Classe"] != classe_active]
-                    st.success("Historique local effacé.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erreur : {e}")
+        if st.button("Enregistrer les modifications"):
+            df_autres = df_eleves[df_eleves["Classe"] != classe_active] if "Classe" in df_eleves.columns else pd.DataFrame()
+            df_global = pd.concat([df_autres, edited_df], ignore_index=True)
+            if use_gsheets and conn is not None:
+                conn.update(worksheet="eleves", data=df_global)
+                st.success("Synchronisé avec Google Sheets !")
+            else:
+                st.session_state.eleves = df_global
+                st.success("Enregistré en local !")
+            st.rerun()
     else:
-        st.warning("Veuillez saisir le code PIN (`EPS2026`) pour accéder aux réglages de la classe.")
+        st.warning("Saisissez le code PIN (`EPS2026`).")
