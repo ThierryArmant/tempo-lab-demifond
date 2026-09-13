@@ -85,7 +85,7 @@ except Exception:
             "Classe": ["6ème A"] * len(noms_test),
             "Dossard": list(range(101, 101 + len(noms_test))),
             "Nom": noms_test,
-            "VMA": [14.0, 12.5, 15.2, 11.0, 13.5, 14.2, 12.0, 15.0, 13.0, 14.5,
+            "VMA": [14.0, 12.5, 15.2, 11.0, 13.5, 14.2, 0.0, 15.0, 13.0, 14.5, # Ex: Durand Thomas sans VMA pour tester
                     12.8, 13.2, 14.8, 11.5, 15.5, 12.2, 13.8, 14.1, 12.9, 13.6,
                     14.3, 12.4, 15.1, 11.8, 13.9, 14.6, 12.6, 13.4, 14.7, 12.1],
             "Objectif_pct": [80] * len(noms_test),
@@ -111,10 +111,9 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Sélectionne ton nom dans la liste de la classe, configure ton protocole, ta distance et ton intensité.")
+    st.info("Sélectionne ton nom, vérifie ta VMA, configure ton protocole et lance ton contrat.")
 
     if not df_eleves_classe.empty:
-        # Formatage Dossard - Nom pour une visibilité immédiate des 30 élèves
         df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
         
         choix_eleve = st.selectbox("🎯 Choisir l'élève (Dossard - Nom) :", df_eleves_classe["Label_Eleve"])
@@ -122,7 +121,18 @@ if mode == "Espace Élève / Terrain":
         dossard_actif = int(choix_eleve.split(" - ")[0])
         eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
 
-        vma = eleve_info["VMA"]
+        vma_actuelle = float(eleve_info["VMA"])
+
+        # --- CONTRÔLE OBLIGATOIRE DE LA VMA ---
+        if vma_actuelle <= 0 or pd.isna(vma_actuelle):
+            st.error("⚠️ **ATTENTION : Aucune VMA valide n'est enregistrée pour cet élève !** Les calculs sont impossibles.")
+            st.warning("Veuillez demander au professeur de renseigner votre VMA dans l'Espace Professeur (ou indiquez-la temporairement ci-dessous).")
+            
+            # Saisie de secours pour ne pas bloquer l'élève sur le terrain
+            vma_saisie = st.number_input("Indique ta VMA (en km/h) :", min_value=5.0, max_value=25.0, value=12.0, step=0.5)
+            vma = vma_saisie
+        else:
+            vma = vma_actuelle
 
         # --- PARAMÉTRAGE DU PROTOCOLE & OBJECTIF ---
         st.subheader("⚙️ Paramétrage du protocole de course")
