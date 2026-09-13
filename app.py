@@ -64,16 +64,20 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CONNEXION GOOGLE SHEETS ---
+# --- INITIALISATION DE LA CONNEXION ET DES DONNÉES (MODE HYBRIDE ROBUSTE) ---
+conn = None
+use_gsheets = False
+
 try:
     conn = st.connection("gsheets", type="gsheets")
     df_eleves = conn.read(worksheet="eleves", ttl=0)
+    use_gsheets = True
     try:
         df_passages_saved = conn.read(worksheet="passages", ttl=0)
     except Exception:
         df_passages_saved = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
 except Exception:
-    # Mode secours local si Google Sheets n'est pas branché
+    # Mode secours local si Google Sheets n'est pas branché / configuré
     if "eleves" not in st.session_state:
         noms_test = ["Arnaud Lucas", "Bernard Emma", "Bouvier Nathan", "Carre Manon", "David Hugo", 
                      "Dubois Chloé", "Durand Thomas", "Faure Clara", "Garnier Louis", "Gauthier Inès",
@@ -85,7 +89,7 @@ except Exception:
             "Classe": ["6ème A"] * len(noms_test),
             "Dossard": list(range(101, 101 + len(noms_test))),
             "Nom": noms_test,
-            "VMA": [14.0, 12.5, 15.2, 11.0, 13.5, 14.2, 0.0, 15.0, 13.0, 14.5, # Ex: Durand Thomas sans VMA pour tester
+            "VMA": [14.0, 12.5, 15.2, 11.0, 13.5, 14.2, 0.0, 15.0, 13.0, 14.5,
                     12.8, 13.2, 14.8, 11.5, 15.5, 12.2, 13.8, 14.1, 12.9, 13.6,
                     14.3, 12.4, 15.1, 11.8, 13.9, 14.6, 12.6, 13.4, 14.7, 12.1],
             "Objectif_pct": [80] * len(noms_test),
@@ -127,8 +131,6 @@ if mode == "Espace Élève / Terrain":
         if vma_actuelle <= 0 or pd.isna(vma_actuelle):
             st.error("⚠️ **ATTENTION : Aucune VMA valide n'est enregistrée pour cet élève !** Les calculs sont impossibles.")
             st.warning("Veuillez demander au professeur de renseigner votre VMA dans l'Espace Professeur (ou indiquez-la temporairement ci-dessous).")
-            
-            # Saisie de secours pour ne pas bloquer l'élève sur le terrain
             vma_saisie = st.number_input("Indique ta VMA (en km/h) :", min_value=5.0, max_value=25.0, value=12.0, step=0.5)
             vma = vma_saisie
         else:
@@ -204,16 +206,21 @@ if mode == "Espace Élève / Terrain":
                 "Date": date_str
             }])
             
-            try:
-                passages_actuels = conn.read(worksheet="passages", ttl=0)
-                passages_maj = pd.concat([passages_actuels, nouveau_passage], ignore_index=True)
-                conn.update(worksheet="passages", data=passages_maj)
-                st.success(f"Passage '{plot_nom}' enregistré dans Google Sheets !")
-            except Exception:
-                if "passages_local" not in st.session_state:
-                    st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
-                st.session_state.passages_local = pd.concat([st.session_state.passages_local, nouveau_passage], ignore_index=True)
-                st.info(f"Passage '{plot_nom}' enregistré en local.")
+            if use_gsheets and conn is not None:
+                try:
+                    passages_actuels = conn.read(worksheet="passages", ttl=0)
+                    passages_maj = pd.concat([passages_actuels, nouveau_passage], ignore_index=True)
+                    conn.update(worksheet="passages", data=passages_maj)
+                    st.success(f"Passage '{plot_nom}' enregistré dans Google Sheets !")
+                    return
+                except Exception:
+                    pass
+            
+            # Mode secours local
+            if "passages_local" not in st.session_state:
+                st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
+            st.session_state.passages_local = pd.concat([st.session_state.passages_local, nouveau_passage], ignore_index=True)
+            st.info(f"Passage '{plot_nom}' enregistré en local.")
 
         cols_simulation = st.columns(min(len(noms_plots), 4))
         for idx, plot_nom in enumerate(noms_plots):
@@ -226,7 +233,7 @@ if mode == "Espace Élève / Terrain":
         st.subheader("📈 Courbe d'analyse de course")
         
         try:
-            df_passages_actuel = conn.read(worksheet="passages", ttl=0)
+            df_passages_actuel = conn.read(worksheet="passages", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
         except Exception:
             df_passages_actuel = st.session_state.get("passages_local", pd.DataFrame())
 
@@ -278,12 +285,17 @@ elif mode == "Espace Professeur (Sécurisé)":
                 
                 st.write("Aperçu du fichier importé :", df_upload.head(3))
                 if st.button("Valider et remplacer la base élèves par ce fichier"):
-                    try:
-                        conn.update(worksheet="eleves", data=df_upload)
-                        st.success("Base élèves mise à jour avec succès depuis le fichier !")
+                    if use_gsheets and conn is not None:
+                        try:
+                            conn.update(worksheet="eleves", data=df_upload)
+                            st.success("Base élèves mise à jour avec succès dans Google Sheets !")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur Google Sheets : {e}")
+                    else:
+                        st.session_state.eleves = df_upload
+                        st.success("Base élèves mise à jour en local avec succès !")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur lors de la synchronisation Google Sheets : {e}")
             except Exception as e:
                 st.error(f"Erreur de lecture du fichier : {e}")
 
@@ -295,8 +307,13 @@ elif mode == "Espace Professeur (Sécurisé)":
             try:
                 df_autres_classes = df_eleves[df_eleves["Classe"] != classe_active] if "Classe" in df_eleves.columns else pd.DataFrame()
                 df_global_maj = pd.concat([df_autres_classes, edited_df], ignore_index=True)
-                conn.update(worksheet="eleves", data=df_global_maj)
-                st.success("Modifications synchronisées avec Google Sheets avec succès !")
+                
+                if use_gsheets and conn is not None:
+                    conn.update(worksheet="eleves", data=df_global_maj)
+                    st.success("Modifications synchronisées avec Google Sheets avec succès !")
+                else:
+                    st.session_state.eleves = df_global_maj
+                    st.success("Modifications enregistrées en local avec succès !")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour : {e}")
@@ -305,14 +322,17 @@ elif mode == "Espace Professeur (Sécurisé)":
         st.subheader("⚙️ Actions de séance")
         if st.button("Effacer l'historique des passages de cette classe"):
             try:
-                df_passages_actuel = conn.read(worksheet="passages", ttl=0)
-                df_passages_nettoye = df_passages_actuel[df_passages_actuel["Classe"] != classe_active]
-                conn.update(worksheet="passages", data=df_passages_nettoye)
-                st.success("Historique de la classe effacé de Google Sheets.")
+                if use_gsheets and conn is not None:
+                    df_passages_actuel = conn.read(worksheet="passages", ttl=0)
+                    df_passages_nettoye = df_passages_actuel[df_passages_actuel["Classe"] != classe_active]
+                    conn.update(worksheet="passages", data=df_passages_nettoye)
+                    st.success("Historique de la classe effacé de Google Sheets.")
+                else:
+                    if "passages_local" in st.session_state:
+                        st.session_state.passages_local = st.session_state.passages_local[st.session_state.passages_local["Classe"] != classe_active]
+                    st.success("Historique local effacé.")
                 st.rerun()
-            except Exception:
-                if "passages_local" in st.session_state:
-                    st.session_state.passages_local = st.session_state.passages_local[st.session_state.passages_local["Classe"] != classe_active]
-                st.success("Historique local effacé.")
+            except Exception as e:
+                st.error(f"Erreur : {e}")
     else:
         st.warning("Veuillez saisir le code PIN (`EPS2026`) pour accéder aux réglages de la classe.")
