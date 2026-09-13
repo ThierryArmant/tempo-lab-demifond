@@ -33,6 +33,16 @@ st.markdown("""
         color: #000000 !important;
     }
     
+    /* CORRECTION EXPANDEUR : Texte en NOIR dans les volets déroulants / expanders */
+    [data-testid="stExpander"] *, [data-testid="stExpander"] p, [data-testid="stExpander"] span {
+        color: #000000 !important;
+    }
+    [data-testid="stExpander"] {
+        background-color: #f0f2f6 !important;
+        border: 2px solid #388bfd !important;
+        border-radius: 8px;
+    }
+    
     /* Textes et instructions du File Uploader en blanc lisible */
     [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] small, [data-testid="stFileUploader"] span {
         color: #ffffff !important;
