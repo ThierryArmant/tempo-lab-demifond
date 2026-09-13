@@ -77,7 +77,7 @@ try:
     except Exception:
         df_passages_saved = pd.DataFrame(columns=["Classe", "Dossard", "Plot", "Heure", "Date"])
 except Exception:
-    # Mode secours local si Google Sheets n'est pas branché / configuré
+    # Mode secours local si Google Sheets n'est pas branché
     if "eleves" not in st.session_state:
         noms_test = ["Arnaud Lucas", "Bernard Emma", "Bouvier Nathan", "Carre Manon", "David Hugo", 
                      "Dubois Chloé", "Durand Thomas", "Faure Clara", "Garnier Louis", "Gauthier Inès",
@@ -115,12 +115,23 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Sélectionne ton nom, vérifie ta VMA, configure ton protocole et lance ton contrat.")
+    st.info("Retrouve ton nom dans le tableau général de la classe, vérifie tes stats, puis sélectionne ton profil pour courir.")
 
     if not df_eleves_classe.empty:
-        df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
+        # --- TABLEAU DE BORD GÉNÉRAL DE LA CLASSE (VISIBLE PAR TOUS EN TEMPS RÉEL) ---
+        st.subheader("📋 Tableau général des contrats de la classe")
         
-        choix_eleve = st.selectbox("🎯 Choisir l'élève (Dossard - Nom) :", df_eleves_classe["Label_Eleve"])
+        # Préparation d'une vue claire pour les élèves
+        df_affichage_classe = df_eleves_classe[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_cible_m"]].copy()
+        df_affichage_classe.columns = ["Dossard", "Nom", "VMA (km/h)", "Contrat (% VMA)", "Distance Cible (m)"]
+        st.dataframe(df_affichage_classe, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.subheader("🎯 Espace Actif de Course")
+
+        # Sélection de l'élève pour lancer le simulateur
+        df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
+        choix_eleve = st.selectbox("Sélectionne ton nom pour démarrer ton chronométrage :", df_eleves_classe["Label_Eleve"])
         
         dossard_actif = int(choix_eleve.split(" - ")[0])
         eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
@@ -137,7 +148,7 @@ if mode == "Espace Élève / Terrain":
             vma = vma_actuelle
 
         # --- PARAMÉTRAGE DU PROTOCOLE & OBJECTIF ---
-        st.subheader("⚙️ Paramétrage du protocole de course")
+        st.subheader("⚙️ Paramétrage de ton protocole")
         col_protocole, col_dist, col_pct = st.columns(3)
         
         with col_protocole:
@@ -318,6 +329,7 @@ elif mode == "Espace Professeur (Sécurisé)":
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour : {e}")
 
+--------
         st.markdown("---")
         st.subheader("⚙️ Actions de séance")
         if st.button("Effacer l'historique des passages de cette classe"):
