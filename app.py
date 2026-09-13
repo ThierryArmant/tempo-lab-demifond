@@ -8,7 +8,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- DESIGN EXTERIEUR HAUT CONTRASTE (VALIDÉ : Fond noir, texte blanc, boutons bleus texte noir) ---
+# --- DESIGN EXTERIEUR HAUT CONTRASTE (Fond noir, texte blanc, boutons bleus texte noir) ---
 st.markdown("""
     <style>
     /* Fond global de l'application */
@@ -75,13 +75,21 @@ try:
 except Exception:
     # Mode secours local si Google Sheets n'est pas branché
     if "eleves" not in st.session_state:
+        noms_test = ["Arnaud Lucas", "Bernard Emma", "Bouvier Nathan", "Carre Manon", "David Hugo", 
+                     "Dubois Chloé", "Durand Thomas", "Faure Clara", "Garnier Louis", "Gauthier Inès",
+                     "Girard Théo", "Guerin Zoé", "Henry Lucas", "Laurent Sarah", "Lemaire Tom",
+                     "Leroy Camille", "Martin Nathan", "Moreau Juliette", "Petit Hugo", "Richard Léa",
+                     "Rousseau Mathis", "Roux Manon", "Simon Enzo", "Thomas Chloé", "Vidal Lucas",
+                     "Vincent Emma", "Blanchard Tom", "Dumont Sarah", "Fontaine Léo", "Gauthier Maëlys"]
         st.session_state.eleves = pd.DataFrame({
-            "Classe": ["6ème A", "6ème A", "5ème B", "5ème B"],
-            "Dossard": [101, 102, 201, 202],
-            "Nom": ["Dupont Thomas", "Martin Chloé", "Durand Lucas", "Moreau Sarah"],
-            "VMA": [14.0, 12.5, 15.2, 11.0],
-            "Objectif_pct": [80, 75, 85, 80],
-            "Distance_cible_m": [600, 500, 800, 500]
+            "Classe": ["6ème A"] * len(noms_test),
+            "Dossard": list(range(101, 101 + len(noms_test))),
+            "Nom": noms_test,
+            "VMA": [14.0, 12.5, 15.2, 11.0, 13.5, 14.2, 12.0, 15.0, 13.0, 14.5,
+                    12.8, 13.2, 14.8, 11.5, 15.5, 12.2, 13.8, 14.1, 12.9, 13.6,
+                    14.3, 12.4, 15.1, 11.8, 13.9, 14.6, 12.6, 13.4, 14.7, 12.1],
+            "Objectif_pct": [80] * len(noms_test),
+            "Distance_cible_m": [600] * len(noms_test)
         })
     df_eleves = st.session_state.eleves
 
@@ -103,41 +111,76 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Sélectionne ton dossard, choisis ta distance et ton intensité pour définir ton contrat d'allure.")
+    st.info("Sélectionne ton nom dans la liste de la classe, configure ton protocole, ta distance et ton intensité.")
 
     if not df_eleves_classe.empty:
-        dossard_actif = st.selectbox("Sélectionne ton dossard :", df_eleves_classe["Dossard"])
+        # Formatage Dossard - Nom pour une visibilité immédiate des 30 élèves
+        df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
+        
+        choix_eleve = st.selectbox("🎯 Choisir l'élève (Dossard - Nom) :", df_eleves_classe["Label_Eleve"])
+        
+        dossard_actif = int(choix_eleve.split(" - ")[0])
         eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
 
         vma = eleve_info["VMA"]
 
-        # --- SAISIE LIBRE DE L'OBJECTIF PAR L'ÉLÈVE ---
-        col_saisie1, col_saisie2 = st.columns(2)
-        with col_saisie1:
-            distance_choisie = st.number_input("📏 Ta distance cible (en mètres) :", min_value=100, max_value=3000, value=int(eleve_info.get("Distance_cible_m", 600)), step=50)
-        with col_saisie2:
-            pct_choisi = st.slider("⚡ Ton intensité (% de VMA) :", min_value=50, max_value=110, value=int(eleve_info.get("Objectif_pct", 80)), step=5)
-
-        vitesse_cible = vma * (pct_choisi / 100)
+        # --- PARAMÉTRAGE DU PROTOCOLE & OBJECTIF ---
+        st.subheader("⚙️ Paramétrage du protocole de course")
+        col_protocole, col_dist, col_pct = st.columns(3)
         
-        # Calcul du temps théorique indicatif (en minutes/secondes)
-        temps_secondes_estime = (distance_choisie / (vitesse_cible * 1000 / 3600)) if vitesse_cible > 0 else 0
-        minutes_est = int(temps_secondes_estime // 60)
-        secondes_est = int(temps_secondes_estime % 60)
+        with col_protocole:
+            ecart_plots = st.selectbox("📌 Écart entre les plots :", options=[15, 20, 25, 50], index=2)
+            
+        with col_dist:
+            liste_distances_25m = list(range(100, 3005, 25))
+            def_dist = int(eleve_info.get("Distance_cible_m", 600))
+            if def_dist not in liste_distances_25m:
+                def_dist = 600
+            
+            distance_choisie = st.selectbox(
+                "📏 Distance cible (bornes de 25m) :", 
+                options=liste_distances_25m, 
+                index=liste_distances_25m.index(def_dist)
+            )
+            
+        with col_pct:
+            pct_choisi = st.slider("⚡ Intensité (% VMA) :", min_value=50, max_value=110, value=int(eleve_info.get("Objectif_pct", 80)), step=5)
 
-        st.markdown("---")
-        # Bannière d'objectif dynamique personnalisée par l'élève
-        st.success(f"📌 **OBJECTIF CONTRAT :** Parcourir **{distance_choisie} mètres** à **{pct_choisi}% VMA** (soit **{vitesse_cible:.2f} km/h** | Temps estimé : **{minutes_est}m {secondes_est:02d}s**).")
+        # Calculs cinématiques intégrés
+        vitesse_cible_kmh = vma * (pct_choisi / 100)
+        vitesse_ms = (vitesse_cible_kmh * 1000) / 3600
+        
+        st.info(f"📋 **PROTOCOLE INTÉGRÉ :** Balisage de piste tous les **{ecart_plots} mètres**.")
+
+        temps_total_estime = (distance_choisie / vitesse_ms) if vitesse_ms > 0 else 0
+        m_est = int(temps_total_estime // 60)
+        s_est = int(temps_total_estime % 60)
+        st.success(f"📌 **OBJECTIF CONTRAT :** Parcourir **{distance_choisie}m** à **{pct_choisi}% VMA** ({vitesse_cible_kmh:.2f} km/h) | Temps idéal : **{m_est}m {s_est:02d}s**.")
+
+        with st.expander("⏱️ Voir mon tableau de marche idéal par plot"):
+            distances_plots = list(range(ecart_plots, distance_choisie + ecart_plots, ecart_plots))
+            if distances_plots[-1] != distance_choisie:
+                distances_plots.append(distance_choisie)
+                
+            tableau_marche = []
+            for d in distances_plots:
+                t_sec = d / vitesse_ms if vitesse_ms > 0 else 0
+                tableau_marche.append({"Plot / Distance": f"{d}m", "Temps idéal cumulé": f"{int(t_sec//60)}m {int(t_sec%60):02d}s"})
+            st.table(pd.DataFrame(tableau_marche))
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Élève", eleve_info["Nom"])
         col2.metric("VMA", f"{vma} km/h")
         col3.metric("Contrat", f"{pct_choisi}% VMA")
-        col4.metric("Vitesse Cible", f"{vitesse_cible:.2f} km/h")
+        col4.metric("Vitesse Cible", f"{vitesse_cible_kmh:.2f} km/h")
 
-        # Simulateur de passage
+        # --- SIMULATEUR DE PASSAGE ADAPTÉ AU PROTOCOLE ---
         st.subheader("📡 Simulateur de passage terrain")
-        col_sim1, col_sim2, col_sim3, col_sim4 = st.columns(4)
+        
+        noms_plots = ["Départ"] + [f"{i * ecart_plots}m" for i in range(1, (distance_choisie // ecart_plots) + 1)]
+        if (distance_choisie % ecart_plots) != 0:
+            noms_plots.append(f"{distance_choisie}m")
+
         heure_actuelle_obj = datetime.datetime.now()
         heure_str = heure_actuelle_obj.strftime("%H:%M:%S")
         date_str = heure_actuelle_obj.strftime("%Y-%m-%d")
@@ -162,14 +205,11 @@ if mode == "Espace Élève / Terrain":
                 st.session_state.passages_local = pd.concat([st.session_state.passages_local, nouveau_passage], ignore_index=True)
                 st.info(f"Passage '{plot_nom}' enregistré en local.")
 
-        if col_sim1.button("Départ (0m)"):
-            enregistrer_passage("Départ")
-        if col_sim2.button("Plot 25m"):
-            enregistrer_passage("25m")
-        if col_sim3.button("Plot 50m"):
-            enregistrer_passage("50m")
-        if col_sim4.button("Tournant 75m"):
-            enregistrer_passage("75m")
+        cols_simulation = st.columns(min(len(noms_plots), 4))
+        for idx, plot_nom in enumerate(noms_plots):
+            col_cible = cols_simulation[idx % len(cols_simulation)]
+            if col_cible.button(plot_nom, key=f"btn_{plot_nom}"):
+                enregistrer_passage(plot_nom)
 
         # Graphique et historique
         st.markdown("---")
@@ -185,9 +225,15 @@ if mode == "Espace Élève / Terrain":
             if not df_eleve.empty:
                 st.table(df_eleve.tail(5))
                 
-                mapping_plots = {"Départ": 0, "25m": 25, "50m": 50, "75m": 75}
+                mapping_plots = {"Départ": 0}
+                for plot_str in noms_plots:
+                    if plot_str != "Départ":
+                        val_m = int(plot_str.replace("m", ""))
+                        mapping_plots[plot_str] = val_m
+
                 df_eleve_graph = df_eleve.copy()
                 df_eleve_graph["Distance_Metres"] = df_eleve_graph["Plot"].map(mapping_plots)
+                df_eleve_graph = df_eleve_graph.dropna(subset=["Distance_Metres"])
                 df_eleve_graph = df_eleve_graph.sort_values(by="Heure")
                 
                 if len(df_eleve_graph) > 1:
