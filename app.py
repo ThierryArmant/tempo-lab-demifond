@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(
-    page_title="TempoLab - Projet Hanula (12 min & Projets)",
+    page_title="TempoLab - Course 12 min & Projets",
     page_icon="⏱️",
     layout="wide"
 )
@@ -40,15 +40,20 @@ if "eleves_vma" not in st.session_state:
         ],
         "VMA": [13.5, 11.5, 14.8, 12.0, 13.0, 12.8, 15.0, 10.5, 14.2, 13.2, 
                 12.2, 14.0, 15.5, 11.8, 13.8, 12.5, 14.5, 13.6, 12.9, 14.1],
-        "Projet": ["Vert"] * 20, # Vert, Jaune ou Orange
-        "Pauses": [[] for _ in range(20)] # Liste des index de colonnes (0 à 7) choisis pour la marche
+        "Projet": ["Vert"] * 20,
+        "Pauses": [[] for _ in range(20)]
     })
+else:
+    if "Projet" not in st.session_state.eleves_vma.columns:
+        st.session_state.eleves_vma["Projet"] = "Vert"
+    if "Pauses" not in st.session_state.eleves_vma.columns:
+        st.session_state.eleves_vma["Pauses"] = [[] for _ in range(len(st.session_state.eleves_vma))]
 
 # Intitulés des 8 séquences d'1'30 de l'épreuve de 12 minutes
 LABELS_SEQUENCES = ["1'30", "3 min", "4'30", "6 min", "7'30", "9 min", "10'30", "12 min"]
 
 # --- MENU LATÉRAL DE NAVIGATION ---
-st.sidebar.title("🏁 TempoLab (Hanula)")
+st.sidebar.title("🏁 TempoLab")
 mode_navigation = st.sidebar.radio("📍 Navigation :", [
     "🛠️ 1. Paramétrage Prof", 
     "🏃 2. Fiche Élève & Projets", 
@@ -65,11 +70,10 @@ df_classe_idx = st.session_state.eleves_vma[st.session_state.eleves_vma["Classe"
 # ==========================================
 if mode_navigation == "🛠️ 1. Paramétrage Prof":
     st.title("🛠️ Espace Professeur - Suivi des Projets (12 min)")
-    st.write("Visualisez les choix de projets (Vert, Jaune, Orange)[cite: 1] et les allures associées pour l'ensemble de la classe.")
+    st.write("Visualisez les choix de projets (Vert, Jaune, Orange) et les allures associées pour l'ensemble de la classe.")
 
     df_prof = st.session_state.eleves_vma.loc[df_classe_idx].copy()
     
-    # Calcul dynamique de l'allure et de la vitesse selon le projet choisi
     def get_vitesse_projet(row):
         vma = row["VMA"]
         proj = row["Projet"]
@@ -77,7 +81,7 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
             return max(4.0, vma - 3.0), "VMA - 3 km/h"
         elif proj == "Jaune":
             return max(4.0, vma - 2.0), "VMA - 2 km/h"
-        else: # Orange
+        else:
             return max(4.0, vma - 1.0), "VMA - 1 km/h"
 
     res = df_prof.apply(get_vitesse_projet, axis=1)
@@ -85,11 +89,10 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
     df_prof["Regime"] = [r[1] for r in res]
     df_prof["Vitesse_ms"] = (df_prof["Vitesse_Calculee_kmh"] * 1000) / 3600
     
-    # Distance totale en 12 min (720 secondes) en tenant compte des pauses (0 m pendant les pauses d'1'30)
     def calc_distance_12min(row):
         v_ms = row["Vitesse_ms"]
         nb_pauses = len(row["Pauses"])
-        temps_course_s = (8 - nb_pauses) * 90 # 8 séquences d'1'30 (90s) moins les pauses
+        temps_course_s = (8 - nb_pauses) * 90
         return round(v_ms * temps_course_s, 1)
 
     df_prof["Distance_Cible_12min_m"] = df_prof.apply(calc_distance_12min, axis=1)
@@ -113,7 +116,7 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
 # ==========================================
 elif mode_navigation == "🏃 2. Fiche Élève & Projets":
     st.title("🏃 Fiche Élève - Ma Course de 12 Minutes")
-    st.write("Choisis ton projet de course ([cite: 1] Vert, Jaune ou Orange) et positionne tes pauses si tu choisis le jaune ou l'orange.")
+    st.write("Choisis ton projet de course (Vert, Jaune ou Orange) et positionne tes pauses si tu choisis le jaune ou l'orange.")
 
     df_classe = st.session_state.eleves_vma.loc[df_classe_idx].copy()
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
@@ -134,28 +137,26 @@ elif mode_navigation == "🏃 2. Fiche Élève & Projets":
         with col_e1:
             st.metric("VMA de référence", f"{vma_eleve} km/h")
         with col_e2:
-            nouveau_projet = st.selectbox("Choix du Projet[cite: 1] :", ["Vert", "Jaune", "Orange"], index=["Vert", "Jaune", "Orange"].index(projet_actuel))
+            nouveau_projet = st.selectbox("Choix du Projet :", ["Vert", "Jaune", "Orange"], index=["Vert", "Jaune", "Orange"].index(projet_actuel))
             if nouveau_projet != projet_actuel:
                 st.session_state.eleves_vma.loc[idx_eleve, "Projet"] = nouveau_projet
-                # Réinitialiser les pauses selon le projet
                 if nouveau_projet == "Vert":
                     st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = []
                 elif nouveau_projet == "Jaune":
-                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = [3] # par défaut 6e minute
+                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = [3]
                 else:
-                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = [2, 5] # par défaut 4'30 et 9 min
+                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = [2, 5]
                 st.rerun()
 
-        # Configuration des pauses pour Jaune ou Orange
         pauses_choisies = pauses_actuelles
         if nouveau_projet == "Jaune":
-            st.write("🟡 **Projet Jaune :** Choisis **1 séquence de marche** (1 min 30) parmi les 8 blocs[cite: 1].")
+            st.write("🟡 **Projet Jaune :** Choisis **1 séquence de marche** (1 min 30) parmi les 8 blocs.")
             choix_pause_1 = st.selectbox("Position de la pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if pauses_actuelles else 3)
             pauses_choisies = [choix_pause_1]
             st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = pauses_choisies
 
         elif nouveau_projet == "Orange":
-            st.write("🟠 **Projet Orange :** Choisis **2 séquences de marche** (3 min au total, consécutives ou non)[cite: 1].")
+            st.write("🟠 **Projet Orange :** Choisis **2 séquences de marche** (3 min au total, consécutives ou non).")
             col_p1, col_p2 = st.columns(2)
             with col_p1:
                 p1 = st.selectbox("1ère pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if len(pauses_actuelles)>0 else 2)
@@ -164,23 +165,21 @@ elif mode_navigation == "🏃 2. Fiche Élève & Projets":
             pauses_choisies = sorted(list(set([p1, p2])))
             st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = pauses_choisies
 
-        # Calcul de l'allure contractuelle
         if nouveau_projet == "Vert":
             allure_kmh = max(4.0, vma_eleve - 3.0)
-            regime_txt = "VMA - 3 km/h (12 min continues)"[cite: 1]
+            regime_txt = "VMA - 3 km/h (12 min continues)"
         elif nouveau_projet == "Jaune":
             allure_kmh = max(4.0, vma_eleve - 2.0)
-            regime_txt = "VMA - 2 km/h (1 pause d'1'30)"[cite: 1]
+            regime_txt = "VMA - 2 km/h (1 pause d'1'30)"
         else:
             allure_kmh = max(4.0, vma_eleve - 1.0)
-            regime_txt = "VMA - 1 km/h (2 pauses d'1'30)"[cite: 1]
+            regime_txt = "VMA - 1 km/h (2 pauses d'1'30)"
 
         v_ms = (allure_kmh * 1000) / 3600
         dist_12min = v_ms * ((8 - len(pauses_choisies)) * 90)
 
         st.info(f"📌 **Ton contrat :** Projet **{nouveau_projet}** ➔ Allure cible : **{allure_kmh} km/h** ({regime_txt}). Distance totale visée : **{dist_12min:.1f} m**.")
 
-        # Visualisation des 8 colonnes (style grille Hanula)
         st.markdown("<hr>", unsafe_allow_html=True)
         st.subheader("📋 Grille de course (8 séquences d'1 min 30)")
         
@@ -199,7 +198,7 @@ elif mode_navigation == "🏃 2. Fiche Élève & Projets":
 # ==========================================
 else:
     st.title("👁️ Poste Observateur - Suivi de la Course (12 min)")
-    st.write("Suivez le coureur, validez ses passages par blocs d'1'30 et décomptez ses sorties de route hors des zones de pause[cite: 1].")
+    st.write("Suivez le coureur, validez ses passages par blocs d'1'30 et décomptez ses sorties de route hors des zones de pause.")
 
     df_classe = st.session_state.eleves_vma.loc[df_classe_idx].copy()
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
@@ -227,16 +226,15 @@ else:
         col_o3.metric("Pauses prévues", f"{len(pauses_obs)} pause(s)")
 
         st.subheader("📊 Tableau de saisie de l'observateur (8 colonnes d'1'30)")
-        st.write("*(Cochez les plots franchis par séquence. Les colonnes de pause sont neutralisées)*[cite: 1]")
+        st.write("*(Cochez les plots franchis par séquence. Les colonnes de pause sont neutralisées)*")
 
-        # Création d'un tableau interactif par blocs d'1'30 pour l'observateur
         obs_data = []
         for i, seq in enumerate(LABELS_SEQUENCES):
             statut = "Pause (Marche)" if i in pauses_obs else "Course active"
             obs_data.append({
                 "Séquence": seq,
                 "Statut prévu": statut,
-                "Plots franchis": 5, # Valeur de test modifiable
+                "Plots franchis": 5,
                 "Sortie de route (Cases vides)": 0 if i in pauses_obs else 1
             })
         
@@ -246,4 +244,4 @@ else:
         total_sorties_route = sum([row["Sortie de route (Cases vides)"] for row in obs_data])
         st.metric("🚨 Total Sorties de Route provisoires", total_sorties_route)
         
-        st.info("💡 **Rétroaction observateur :** Guide le coureur selon son projet. S'il est dans une zone de course active, vérifie qu'il tient son allure cible[cite: 1]. S'il est dans sa zone de pause, rappelle-lui qu'il a le droit de marcher[cite: 1] !")
+        st.info("💡 **Rétroaction observateur :** Guide le coureur selon son projet. S'il est dans une zone de course active, vérifie qu'il tient son allure cible. S'il est dans sa zone de pause, rappelle-lui qu'il a le droit de marcher !")
