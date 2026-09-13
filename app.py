@@ -8,7 +8,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- DESIGN EXTERIEUR HAUT CONTRASTE (Fond noir, texte blanc, boutons bleus texte noir) ---
+# --- DESIGN EXTERIEUR HAUT CONTRASTE ---
 st.markdown("""
     <style>
     /* Fond global de l'application */
@@ -23,9 +23,14 @@ st.markdown("""
         border-right: 2px solid #262a33;
     }
     
-    /* Forcer tous les textes en blanc pour un contraste maximal au soleil */
+    /* Forcer tous les textes en blanc par défaut sur la page */
     h1, h2, h3, h4, h5, h6, p, span, label, div[data-testid="stSidebar"] * {
         color: #ffffff !important;
+    }
+    
+    /* TABLEAUX : Texte en NOIR sur fond blanc pour les tableaux de données st.dataframe / st.table */
+    [data-testid="stDataFrame"] *, [data-testid="stTable"] *, th, td {
+        color: #000000 !important;
     }
     
     /* Textes et instructions du File Uploader en blanc lisible */
@@ -115,20 +120,18 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Voici toute la classe en direct. Consultez vos contrats ci-dessous, puis sélectionnez votre nom pour chronométrer vos passages.")
+    st.info("Consultez la vue d'ensemble de toute la classe ci-dessous, puis sélectionnez l'élève actif pour chronométrer ses passages.")
 
     if not df_eleves_classe.empty:
         # --- 1. AFFICHAGE GLOBAL DE TOUTE LA CLASSE EN TEMPS RÉEL ---
         st.subheader("📋 Vue d'ensemble de toute la classe")
         
-        # Calcul de la vitesse cible pour chaque élève pour enrichir le tableau général
         df_vue_globale = df_eleves_classe.copy()
         df_vue_globale["Vitesse Cible (km/h)"] = (df_vue_globale["VMA"] * (df_vue_globale["Objectif_pct"] / 100)).round(2)
         
         df_affichage = df_vue_globale[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_cible_m", "Vitesse Cible (km/h)"]].copy()
         df_affichage.columns = ["Dossard", "Nom", "VMA (km/h)", "Contrat (% VMA)", "Distance (m)", "Vitesse Cible (km/h)"]
         
-        # Affichage du grand tableau contenant toute la classe
         st.dataframe(df_affichage, use_container_width=True, hide_index=True)
 
         st.markdown("---")
@@ -183,7 +186,8 @@ if mode == "Espace Élève / Terrain":
         temps_total_estime = (distance_choisie / vitesse_ms) if vitesse_ms > 0 else 0
         m_est = int(temps_total_estime // 60)
         s_est = int(temps_total_estime % 60)
-        st.success(f"📌 **OBJECTIF CONTRAT ({elev_info['Nom']}) :** Parcourir **{distance_choisie}m** à **{pct_choisi}% VMA** ({vitesse_cible_kmh:.2f} km/h) | Temps idéal : **{m_est}m {s_est:02d}s**.")
+        
+        st.success(f"📌 **OBJECTIF CONTRAT ({eleve_info['Nom']}) :** Parcourir **{distance_choisie}m** à **{pct_choisi}% VMA** ({vitesse_cible_kmh:.2f} km/h) | Temps idéal : **{m_est}m {s_est:02d}s**.")
 
         with st.expander(f"⏱️ Voir le tableau de marche idéal par plot pour {eleve_info['Nom']}"):
             distances_plots = list(range(ecart_plots, distance_choisie + ecart_plots, ecart_plots))
