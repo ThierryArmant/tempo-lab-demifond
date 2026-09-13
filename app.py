@@ -8,12 +8,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- DESIGN EXTERIEUR HAUT CONTRASTE (ANTI-REFLETS SOLEIL) ---
+# --- DESIGN EXTERIEUR HAUT CONTRASTE (VALIDÉ : Fond noir, texte blanc, boutons bleus texte noir) ---
 st.markdown("""
     <style>
     /* Fond global de l'application */
     .stApp {
-        background-color: #050505;
+        background-color: #000000;
         color: #ffffff;
     }
     
@@ -28,13 +28,13 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* Correction : Forcer les textes et instructions du File Uploader en blanc lisible */
+    /* Textes et instructions du File Uploader en blanc lisible */
     [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] small, [data-testid="stFileUploader"] span {
         color: #ffffff !important;
     }
     [data-testid="stFileUploader"] section {
         background-color: #16181d !important;
-        border: 2px dashed #58a6ff !important;
+        border: 2px dashed #388bfd !important;
     }
     
     /* Style des conteneurs / cartes métriques bien détachés */
@@ -45,20 +45,21 @@ st.markdown("""
         padding: 10px;
     }
     
-    /* Boutons larges et ultra-visibles sur le terrain */
+    /* BOUTONS : Fond bleu vif et ÉCRITURE NOIRE pour un contraste choc au soleil */
     .stButton>button {
         width: 100%;
-        background-color: #1f6feb;
-        color: white !important;
-        font-weight: bold;
-        font-size: 18px;
+        background-color: #388bfd !important;
+        color: #000000 !important;
+        font-weight: 900 !important;
+        font-size: 18px !important;
         border-radius: 8px;
-        border: 2px solid #58a6ff;
+        border: 2px solid #ffffff;
         padding: 12px;
     }
     .stButton>button:hover {
-        background-color: #388bfd;
-        border-color: #ffffff;
+        background-color: #58a6ff !important;
+        color: #000000 !important;
+        border-color: #388bfd;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -102,27 +103,40 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Sélectionnez votre dossard pour voir votre contrat d'allure, valider vos passages et analyser vos courbes.")
+    st.info("Sélectionne ton dossard, choisis ta distance et ton intensité pour définir ton contrat d'allure.")
 
     if not df_eleves_classe.empty:
-        dossard_actif = st.selectbox("Sélectionnez votre dossard :", df_eleves_classe["Dossard"])
+        dossard_actif = st.selectbox("Sélectionne ton dossard :", df_eleves_classe["Dossard"])
         eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
 
         vma = eleve_info["VMA"]
-        pct = eleve_info["Objectif_pct"]
-        vitesse_cible = vma * (pct / 100)
+
+        # --- SAISIE LIBRE DE L'OBJECTIF PAR L'ÉLÈVE ---
+        col_saisie1, col_saisie2 = st.columns(2)
+        with col_saisie1:
+            distance_choisie = st.number_input("📏 Ta distance cible (en mètres) :", min_value=100, max_value=3000, value=int(eleve_info.get("Distance_cible_m", 600)), step=50)
+        with col_saisie2:
+            pct_choisi = st.slider("⚡ Ton intensité (% de VMA) :", min_value=50, max_value=110, value=int(eleve_info.get("Objectif_pct", 80)), step=5)
+
+        vitesse_cible = vma * (pct_choisi / 100)
+        
+        # Calcul du temps théorique indicatif (en minutes/secondes)
+        temps_secondes_estime = (distance_choisie / (vitesse_cible * 1000 / 3600)) if vitesse_cible > 0 else 0
+        minutes_est = int(temps_secondes_estime // 60)
+        secondes_est = int(temps_secondes_estime % 60)
+
+        st.markdown("---")
+        # Bannière d'objectif dynamique personnalisée par l'élève
+        st.success(f"📌 **OBJECTIF CONTRAT :** Parcourir **{distance_choisie} mètres** à **{pct_choisi}% VMA** (soit **{vitesse_cible:.2f} km/h** | Temps estimé : **{minutes_est}m {secondes_est:02d}s**).")
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Élève", eleve_info["Nom"])
         col2.metric("VMA", f"{vma} km/h")
-        col3.metric("Contrat", f"{pct}% VMA")
+        col3.metric("Contrat", f"{pct_choisi}% VMA")
         col4.metric("Vitesse Cible", f"{vitesse_cible:.2f} km/h")
 
-        st.markdown("---")
-        st.success(f"📌 **Objectif :** Parcourir **{eleve_info['Distance_cible_m']} mètres** à une allure de **{vitesse_cible:.1f} km/h**.")
-
         # Simulateur de passage
-        st.subheader("📡 Simulateur de passage")
+        st.subheader("📡 Simulateur de passage terrain")
         col_sim1, col_sim2, col_sim3, col_sim4 = st.columns(4)
         heure_actuelle_obj = datetime.datetime.now()
         heure_str = heure_actuelle_obj.strftime("%H:%M:%S")
@@ -157,9 +171,9 @@ if mode == "Espace Élève / Terrain":
         if col_sim4.button("Tournant 75m"):
             enregistrer_passage("75m")
 
-        # --- MODULE GRAPHIQUE D'ANALYSE D'ALLURE ---
+        # Graphique et historique
         st.markdown("---")
-        st.subheader("📈 Courbe d'analyse de course et régularité")
+        st.subheader("📈 Courbe d'analyse de course")
         
         try:
             df_passages_actuel = conn.read(worksheet="passages", ttl=0)
@@ -171,20 +185,16 @@ if mode == "Espace Élève / Terrain":
             if not df_eleve.empty:
                 st.table(df_eleve.tail(5))
                 
-                # Transformation pour tracer un graphique simple des passages chronologiques
-                # On associe un ordre numérique aux plots pour l'axe des X
                 mapping_plots = {"Départ": 0, "25m": 25, "50m": 50, "75m": 75}
                 df_eleve_graph = df_eleve.copy()
                 df_eleve_graph["Distance_Metres"] = df_eleve_graph["Plot"].map(mapping_plots)
                 df_eleve_graph = df_eleve_graph.sort_values(by="Heure")
                 
                 if len(df_eleve_graph) > 1:
-                    st.write("Évolution des passages enregistrés (Chronomètre par plot) :")
-                    # Affichage d'un graphique natif Streamlit clair et contrasté
                     chart_data = df_eleve_graph.set_index("Heure")[["Distance_Metres"]]
                     st.line_chart(chart_data)
                 else:
-                    st.info("Validez au moins 2 plots pour visualiser la courbe de progression de course.")
+                    st.info("Valide au moins 2 plots pour visualiser ta courbe.")
             else:
                 st.write("Aucun passage enregistré pour ce dossard.")
         else:
@@ -201,7 +211,7 @@ elif mode == "Espace Professeur (Sécurisé)":
         st.success("Accès administrateur déverrouillé.")
         
         st.subheader("📥 Importer une liste d'élèves (Fichier CSV ou Excel)")
-        uploaded_file = st.file_uploader("Glissez-déposez votre fichier ici (Colonnes attendues : Classe, Dossard, Nom, VMA, Objectif_pct, Distance_cible_m)", type=["csv", "xlsx"])
+        uploaded_file = st.file_uploader("Glissez-déposez votre fichier ici (Colonnes : Classe, Dossard, Nom, VMA, Objectif_pct, Distance_cible_m)", type=["csv", "xlsx"])
         
         if uploaded_file is not None:
             try:
