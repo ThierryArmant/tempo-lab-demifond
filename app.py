@@ -44,7 +44,6 @@ try:
         df_passages = pd.DataFrame(columns=["Classe", "Dossard", "Nom", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"])
 except Exception:
     if "eleves" not in st.session_state:
-        # Données de test pour la classe
         st.session_state.eleves = pd.DataFrame({
             "Classe": ["5ème 5"] * 5,
             "Dossard": [501, 502, 503, 504, 505],
@@ -71,7 +70,6 @@ st.sidebar.info("🎯 **Objectif :** Gestion d'effort, fractions (3min/6min/3min
 st.title(f"🏃 Analyse de Course & Écarts - Classe : {classe_active}")
 
 if not df_eleves_classe.empty:
-    # 1. Choix du format de course pédagogique
     format_course = st.selectbox(
         "⏱️ Choisir la structure de la séance / format d'effort :",
         [
@@ -83,7 +81,6 @@ if not df_eleves_classe.empty:
 
     st.markdown("---")
 
-    # 2. Sélection de l'élève
     df_eleves_classe["Label"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
     choix_eleve = st.selectbox("🎯 Sélectionner l'élève à analyser / chronométrer :", df_eleves_classe["Label"])
     
@@ -93,7 +90,6 @@ if not df_eleves_classe.empty:
     vma = float(eleve_info["VMA"])
     pct_vma = int(eleve_info["Objectif_pct"])
     
-    # Vitesse en m/min (très pratique pour le suivi minute par minute en demi-fond)
     vitesse_ms = (vma * (pct_vma / 100) * 1000) / 3600
     vitesse_m_min = vitesse_ms * 60
 
@@ -104,19 +100,16 @@ if not df_eleves_classe.empty:
 
     st.markdown("---")
 
-    # 3. Saisie des relevés minute par minute sur le terrain
     st.subheader("⏱️ Saisie des passages minute par minute (Suivi d'effort)")
     
-    # Détermination du nombre de minutes total selon le format choisi
-    max_minutes = 9
-    if "Option B" in format_course: minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    elif "Option C" in format_course: minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    else: minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    if "Option B" in format_course: 
+        minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    elif "Option C" in format_course: 
+        minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    else: 
+        minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-    # Interface de saisie rapide pour la minute active
     minute_active = st.selectbox("Minute de course en cours :", minutes_list)
-    
-    # Distance idéale cumulée à cette minute précise selon la VMA et le %
     distance_ideale_cumulee = vitesse_m_min * minute_active
 
     col_saisie1, col_saisie2 = st.columns(2)
@@ -153,11 +146,9 @@ if not df_eleves_classe.empty:
             except Exception:
                 pass
         
-        # Sauvegarde session locale
         if "passages_local" not in st.session_state:
             st.session_state.passages_local = pd.DataFrame(columns=["Classe", "Dossard", "Nom", "Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"])
         
-        # Éviter les doublons pour la même minute sur le même élève
         st.session_state.passages_local = st.session_state.passages_local[
             ~((st.session_state.passages_local["Dossard"] == dossard_actif) & (st.session_state.passages_local["Minute_num"] == minute_active))
         ]
@@ -168,7 +159,6 @@ if not df_eleves_classe.empty:
     st.markdown("---")
     st.subheader(f"📈 Courbe d'allure et Écarts au contrat - {eleve_info['Nom']}")
 
-    # Récupération des données enregistrées pour cet élève
     try:
         df_source = conn.read(worksheet="passages_demifond", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
     except Exception:
@@ -180,8 +170,7 @@ if not df_eleves_classe.empty:
         if not df_eleve_cours.empty and "Minute_num" in df_eleve_cours.columns:
             df_eleve_cours = df_eleve_cours.sort_values(by="Minute_num")
             
-            # Affichage de l'écart en temps réel sous forme de métrique choc
- dernier_point = df_eleve_cours.iloc[-1]
+            dernier_point = df_eleve_cours.iloc[-1]
             ecart_actuel = dernier_point["Ecart_m"]
             
             col_m1, col_m2, col_m3 = st.columns(3)
@@ -195,11 +184,9 @@ if not df_eleves_classe.empty:
             else:
                 col_m3.metric("Écart au temps", "0 mètre", delta="Parfait aligné sur le contrat !")
 
-            # Tableau récapitulatif des passages de l'élève
             st.markdown("##### 📋 Tableau de marche détaillé :")
             st.dataframe(df_eleve_cours[["Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"]], use_container_width=True, hide_index=True)
 
-            # Courbe comparative (Distance Réelle vs Distance Idéale)
             st.markdown("##### 📉 Graphique comparatif (Allure Réelle vs Allure Idéale) :")
             df_graph = df_eleve_cours.set_index("Minute")[["Distance_Reelle", "Distance_Ideale"]]
             st.line_chart(df_graph)
