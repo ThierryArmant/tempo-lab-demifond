@@ -3,12 +3,12 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(
-    page_title="TempoLab - Suivi & Observateur RFID",
+    page_title="TempoLab - Suivi & Profils d'Allure",
     page_icon="⏱️",
     layout="wide"
 )
 
-# --- DESIGN COMPACT & HAUT CONTRASTE (Plein soleil) ---
+# --- DESIGN COMPACT & HAUT CONTRASTE ---
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: #ffffff; }
@@ -174,7 +174,7 @@ else:
         col_info2.metric("VMA", f"{vma_obs} km/h")
         col_info3.metric("Contrat", f"{pct_obs}%")
 
-        st.subheader("📊 Suivi & Évaluation CA1 (Régularité)")
+        st.subheader("📊 Suivi & Profil d'Allure de Course")
 
         df_bornes_obs = df_passages[df_passages["Dossard"] == dossard_obs].copy()
 
@@ -182,33 +182,39 @@ else:
             df_bornes_obs["Temps_Theorique_s"] = (df_bornes_obs["Borne_m"] / vitesse_c_obs).round(1)
             df_bornes_obs["Ecart_s"] = (df_bornes_obs["Temps_s"] - df_bornes_obs["Temps_Theorique_s"]).round(1)
 
-            def eval_couleur_et_competence(ecart):
+            # Analyse dynamique du profil d'allure selon l'écart aux bornes
+            def eval_profil_allure(row):
+                borne = row["Borne_m"]
+                ecart = row["Ecart_s"]
+                
                 if abs(ecart) <= 2.0:
-                    return "🟢 VERT", "Très bonne maîtrise"
-                elif abs(ecart) <= 5.0:
-                    return "🟠 ORANGE", "Maîtrise fragile"
+                    return "🟢 VERT", "Stable (Régulier)"
+                elif ecart < -2.0:
+                    return "🔴 ROUGE", "Descendant (Parti trop vite)"
+                elif ecart > 2.0 and borne > 300:
+                    return "🟠 ORANGE", "Montant (Progressif / Fin de course)"
                 else:
-                    return "🔴 ROUGE", "Maîtrise insuffisante"
+                    return "🔵 BLEU", "Dent de scie (Irrégulier / Yo-yo)"
 
-            resultats_evaluation = df_bornes_obs["Ecart_s"].apply(eval_couleur_et_competence)
+            resultats_evaluation = df_bornes_obs.apply(eval_profil_allure, axis=1)
             df_bornes_obs["Rétroaction_Code"] = [r[0] for r in resultats_evaluation]
-            df_bornes_obs["Niveau_Competence"] = [r[1] for r in resultats_evaluation]
+            df_bornes_obs["Profil_Allure"] = [r[1] for r in resultats_evaluation]
 
             st.dataframe(
-                df_bornes_obs[["Borne_m", "Temps_s", "Temps_Theorique_s", "Ecart_s", "Rétroaction_Code", "Niveau_Competence"]].rename(
+                df_bornes_obs[["Borne_m", "Temps_s", "Temps_Theorique_s", "Ecart_s", "Rétroaction_Code", "Profil_Allure"]].rename(
                     columns={
                         "Borne_m": "Borne",
                         "Temps_s": "Réel (s)",
                         "Temps_Theorique_s": "Cible (s)",
                         "Ecart_s": "Écart",
                         "Rétroaction_Code": "Code",
-                        "Niveau_Competence": "Évaluation"
+                        "Profil_Allure": "Profil d'allure"
                     }
                 ),
                 use_container_width=True,
                 hide_index=True
             )
 
-            st.info("💡 **Consigne :** Annonce la couleur au coureur (*Vert = Idéal, Orange = Attention, Rouge = Dérive*).")
+            st.info("💡 **Consigne observateur :** Vert = Stable | Rouge = Descendant (trop rapide) | Orange = Montant (accélération) | Bleu = Dent de scie (irrégulier).")
         else:
             st.warning("Aucun passage enregistré.")
