@@ -65,7 +65,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- BASE DE DONNÉES DES PALIERS VMA (Léger-Boucher & Vaussenat simplifiés) ---
-# Dictionnaire indicatif Palier -> Vitesse VMA (km/h)
 TABLE_VMA = {
     "Palier 1 (8.0 km/h)": 8.0, "Palier 2 (8.5 km/h)": 8.5, "Palier 3 (9.0 km/h)": 9.0,
     "Palier 4 (9.5 km/h)": 9.5, "Palier 5 (10.0 km/h)": 10.0, "Palier 6 (10.5 km/h)": 10.5,
@@ -90,7 +89,6 @@ try:
         df_seances_saved = pd.DataFrame(columns=["Classe", "Date", "Mode", "Dossard", "Nom", "Details_Performance"])
 except Exception:
     if "eleves" not in st.session_state:
-        # Données de test multi-classes (6A, 5B, 4D, 3A)
         st.session_state.eleves = pd.DataFrame({
             "Classe": ["6ème A", "6ème A", "5ème B", "5ème B", "4ème D", "4ème D", "3ème A", "3ème A"],
             "Dossard": [101, 102, 201, 202, 401, 402, 301, 302],
@@ -163,7 +161,6 @@ elif mode_seance == "🏃 Demi-fond (Contrat / Plots)":
     st.title(f"🏃 Demi-fond - Classe : {classe_active}")
     
     if not df_eleves_classe.empty:
-        # Choix du mode de saisie (Puce / Tactile vs Manuel)
         type_saisie = st.radio("🛠️ Mode de chronométrage :", ["Mode Tactile / Manuel (Enseignant ou Élève)", "Mode Puce / Détecteur (Simulation automatique)"], horizontal=True)
 
         df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
@@ -177,7 +174,6 @@ elif mode_seance == "🏃 Demi-fond (Contrat / Plots)":
             st.error("⚠️ Aucune VMA valide pour cet élève. Veuillez la renseigner.")
             vma = st.number_input("Saisir la VMA (km/h) :", min_value=5.0, max_value=25.0, value=12.0)
 
-        # Paramétrage protocole
         col_p, col_d, col_c = st.columns(3)
         with col_p:
             ecart_plots = st.selectbox("📌 Écart plots :", options=[15, 20, 25, 50], index=2)
@@ -209,8 +205,7 @@ elif mode_seance == "🏃 Demi-fond (Contrat / Plots)":
             cols_sim = st.columns(min(len(noms_plots), 4))
             for idx, p_nom in enumerate(noms_plots):
                 if cols_sim[idx % len(cols_sim)].button(p_nom, key=f"btn_{p_nom}"):
-                    # Enregistrement séance
-                    nouvelle_ L = pd.DataFrame([{
+                    nouvelle_ligne = pd.DataFrame([{
                         "Classe": classe_active,
                         "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "Mode": "Demi-fond",
@@ -221,11 +216,11 @@ elif mode_seance == "🏃 Demi-fond (Contrat / Plots)":
                     if use_gsheets and conn is not None:
                         try:
                             s_act = conn.read(worksheet="seances", ttl=0)
-                            conn.update(worksheet="seances", data=pd.concat([s_act, nouvelle_ L], ignore_index=True))
+                            conn.update(worksheet="seances", data=pd.concat([s_act, nouvelle_ligne], ignore_index=True))
                         except Exception:
                             pass
                     else:
-                        st.session_state.seances_local = pd.concat([st.session_state.seances_local, nouvelle_ L], ignore_index=True)
+                        st.session_state.seances_local = pd.concat([st.session_state.seances_local, nouvelle_ligne], ignore_index=True)
                     st.success(f"Passage '{p_nom}' enregistré et synchronisé pour le feedback !")
         else:
             st.info("📡 Mode Puce activé : En attente de détection automatique des dossards sur la ligne...")
@@ -242,7 +237,6 @@ elif mode_seance == "⚡ Test VMA (Vaussenat / Léger-Boucher)":
     type_test = st.selectbox("Type de test :", ["Test Léger-Boucher (Pistes 20m)", "Test de Vaussenat (Pôles continus)"])
 
     if not df_eleves_classe.empty:
-        # Saisie groupée ou individuelle des paliers de VMA
         st.subheader("📝 Saisie des résultats du test VMA")
         
         eleve_vma_choix = st.selectbox("Choisir l'élève à évaluer :", df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"])
