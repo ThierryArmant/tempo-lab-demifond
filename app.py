@@ -97,13 +97,7 @@ if nom_selectionne:
 
     if not df_ses_bornes.empty:
         # Calcul dynamique de la distance idéale / cible pour chaque temps de passage enregistré par les bornes
-        # Distance Cible = Vitesse (m/s) * Temps écoulé (secondes)
         df_ses_bornes["Distance_Cible_m"] = (vitesse_ms * df_ses_bornes["Temps_s"]).round(1)
-        
-        # Écart = Distance Réelle (la borne fixe, ex: 25m, 50m...) - Distance Cible théorique calculée avec la VMA/Curseur
-        # Note : Sur une borne fixe (ex: la borne des 100m), la distance réelle est fixe (100m). 
-        # L'écart se lit donc plutôt sur le temps ou sur la distance parcourue au bout d'un temps donné.
-        # Ajustons la logique : comparons ce qu'il a parcouru au temps t par rapport à la cible.
         
         distance_max_reelle = df_ses_bornes["Borne_m"].max()
         dernier_temps_s = df_ses_bornes.iloc[-1]["Temps_s"]
@@ -132,9 +126,10 @@ if nom_selectionne:
             hide_index=True
         )
 
-        # Graphique comparatif
+        # Graphique comparatif corrigé
         st.subheader("📉 Comparatif Borne Réelle vs Distance Cible")
-        df_graph = df_ses_bornes.set_index("Borne_m")[["Borne_m", "Distance_Cible_m"]]
+        df_graph = df_ses_bornes[["Borne_m", "Distance_Cible_m"]].set_index("Borne_m")
+        df_graph["Distance_Réelle"] = df_graph.index
         st.line_chart(df_graph)
 
     else:
