@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(
-    page_title="TempoLab - Suivi & Profils d'Allure",
+    page_title="TempoLab - Tests Profils d'Allure",
     page_icon="⏱️",
     layout="wide"
 )
@@ -25,55 +25,64 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- BASE ÉLÈVES (CLASSE DE 5ème - 20 Élèves) ---
+# --- BASE ÉLÈVES (FOCUS SUR LES 4 PROFILS DE TEST) ---
 if "eleves_vma" not in st.session_state:
     st.session_state.eleves_vma = pd.DataFrame({
-        "Classe": ["5ème"] * 20,
-        "Dossard": [5501, 5502, 5503, 5504, 5505, 5506, 5507, 5508, 5509, 5510, 
-                    5511, 5512, 5513, 5514, 5515, 5516, 5517, 5518, 5519, 5520],
+        "Classe": ["5ème"] * 4,
+        "Dossard": [5501, 5502, 5503, 5504],
         "Nom": [
-            "Blanc Nathan", "Bonnet Chloé", "Brunet Lucas", "Chevalier Manon", 
-            "Clement Hugo", "Colin Emma", "David Théo", "Dupond Sarah", 
-            "Dupont Thomas", "Fabre Inès", "Faure Louis", "Fontaine Zoé", 
-            "Fournier Lucas", "Garcia Léa", "Garnier Tom", "Gautier Camille", 
-            "Girard Nathan", "Guerin Juliette", "Henry Hugo", "Laurent Maëlys"
+            "Blanc Nathan (Stable)", 
+            "Bonnet Chloé (Descendant - Trop vite)", 
+            "Brunet Lucas (Montant - Progressif)", 
+            "Chevalier Manon (Dent de scie - Yo-yo)"
         ],
-        "VMA": [13.5, 11.5, 14.8, 12.0, 13.0, 12.8, 15.0, 10.5, 14.2, 13.2, 
-                12.2, 14.0, 15.5, 11.8, 13.8, 12.5, 14.5, 13.6, 12.9, 14.1],
-        "Objectif_pct": [80, 75, 85, 80, 80, 75, 90, 75, 80, 80, 
-                         75, 85, 90, 80, 80, 75, 85, 80, 75, 80]
+        "VMA": [13.5, 11.5, 14.8, 12.0],
+        "Objectif_pct": [80, 75, 85, 80]
     })
 
-# --- GÉNÉRATION AUTOMATIQUE DES PASSAGES AUX BORNES (Tous les 25m jusqu'à 600m) ---
+# --- GÉNÉRATION DES COURSES DE TEST SPÉCIFIQUES (600m / par pas de 25m) ---
 if "log_bornes_vma" not in st.session_state:
     logs = []
-    np.random.seed(42)
     
-    for _, eleve in st.session_state.eleves_vma.iterrows():
-        dossard = eleve["Dossard"]
-        vma = eleve["VMA"]
-        pct = eleve["Objectif_pct"]
-        
-        vitesse_effective = (vma * (pct / 100) * 1000) / 3600 * np.random.uniform(0.97, 1.03)
-        
-        temps_cumule = 0
-        for borne in range(25, 601, 25):
-            temps_intervalle = (25 / vitesse_effective) * np.random.uniform(0.98, 1.02)
-            temps_cumule += temps_intervalle
-            
-            logs.append({
-                "Dossard": dossard,
-                "Borne_m": borne,
-                "Temps_s": round(temps_cumule, 1)
-            })
-            
+    # 1. Nathan (STABLE) : Vitesse constante
+    v_nathan = (13.5 * 0.80 * 1000) / 3600
+    t = 0
+    for b in range(25, 601, 25):
+        t += (25 / v_nathan) * 1.01
+        logs.append({"Dossard": 5501, "Borne_m": b, "Temps_s": round(t, 1)})
+
+    # 2. Chloé (DESCENDANT) : Part très vite (avance énorme au début), puis craque complètement
+    v_chloe = (11.5 * 0.75 * 1000) / 3600
+    t = 0
+    for i, b in enumerate(range(25, 601, 25)):
+         facteur = 0.75 if i < 8 else (1.1 + (i * 0.05)) # rapide au début, lent à la fin
+         t += (25 / v_chloe) * facteur
+         logs.append({"Dossard": 5502, "Borne_m": b, "Temps_s": round(t, 1)})
+
+    # 3. Lucas (MONTANT) : Part lentement (retard), puis accélère fort sur la fin
+    v_lucas = (14.8 * 0.85 * 1000) / 3600
+    t = 0
+    for i, b in enumerate(range(25, 601, 25)):
+        facteur = 1.2 if i < 10 else 0.85 # lent au début, très rapide à la fin
+        t += (25 / v_lucas) * facteur
+        logs.append({"Dossard": 5503, "Borne_m": b, "Temps_s": round(t, 1)})
+
+    # 4. Manon (DENT DE SCIE) : Alterne accélérations et ralentissements brusques
+    v_manon = (12.0 * 0.80 * 1000) / 3600
+    t = 0
+    alternance = [0.8, 1.3, 0.75, 1.25, 0.9, 1.2, 0.8, 1.3, 0.85, 1.15, 0.9, 1.2, 0.8, 1.2, 0.9, 1.1, 0.85, 1.15, 0.9, 1.1, 0.95, 1.05, 0.9, 1.1]
+    for i, b in enumerate(range(25, 601, 25)):
+        facteur = alternance[i % len(alternance)]
+        t += (25 / v_manon) * facteur
+        logs.append({"Dossard": 5504, "Borne_m": b, "Temps_s": round(t, 1)})
+
     st.session_state.log_bornes_vma = pd.DataFrame(logs)
 
 df_eleves = st.session_state.eleves_vma
 df_passages = st.session_state.log_bornes_vma
 
 # --- MENU LATÉRAL DE NAVIGATION ---
-st.sidebar.title("🏁 TempoLab")
+st.sidebar.title("🏁 TempoLab Tests")
 mode_navigation = st.sidebar.radio("📍 Mode :", [
     "🏃 Bilan & Contrat", 
     "👁️ Poste Observateur"
@@ -88,10 +97,10 @@ df_classe = df_eleves[df_eleves["Classe"] == classe_choisie]
 # MODE 1 : BILAN INDIVIDUEL ET CONTRAT
 # ==========================================
 if mode_navigation == "🏃 Bilan & Contrat":
-    st.title(f"🏃 Fiche Élève - {classe_choisie}")
+    st.title(f"🏃 Fiche Élève (Tests Profils) - {classe_choisie}")
     
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
-    nom_selectionne = st.selectbox("🎯 Sélectionne ton nom :", df_classe["Label"])
+    nom_selectionne = st.selectbox("🎯 Sélectionne ton profil de test :", df_classe["Label"])
 
     if nom_selectionne:
         dossard_actif = int(nom_selectionne.split(" - ")[0])
@@ -148,17 +157,15 @@ if mode_navigation == "🏃 Bilan & Contrat":
             df_graph = df_ses_bornes[["Borne_m", "Distance_Cible_m"]].set_index("Borne_m")
             df_graph["Distance_Réelle"] = df_graph.index
             st.line_chart(df_graph, height=200)
-        else:
-            st.info("Aucun passage enregistré.")
 
 # ==========================================
 # MODE 2 : LOGIQUE DE L'OBSERVATEUR (TERRAIN)
 # ==========================================
 else:
-    st.title(f"👁️ Poste Observateur - {classe_choisie}")
+    st.title(f"👁️ Poste Observateur (Tests Profils) - {classe_choisie}")
 
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
-    coureur_choisi = st.selectbox("🎯 Coureur observé :", df_classe["Label"])
+    coureur_choisi = st.selectbox("🎯 Coureur de test observé :", df_classe["Label"])
 
     if coureur_choisi:
         dossard_obs = int(coureur_choisi.split(" - ")[0])
@@ -182,16 +189,13 @@ else:
             df_bornes_obs["Temps_Theorique_s"] = (df_bornes_obs["Borne_m"] / vitesse_c_obs).round(1)
             df_bornes_obs["Ecart_s"] = (df_bornes_obs["Temps_s"] - df_bornes_obs["Temps_Theorique_s"]).round(1)
 
-            # Analyse dynamique du profil d'allure selon l'écart aux bornes
             def eval_profil_allure(row):
-                borne = row["Borne_m"]
                 ecart = row["Ecart_s"]
-                
                 if abs(ecart) <= 2.0:
                     return "🟢 VERT", "Stable (Régulier)"
                 elif ecart < -2.0:
                     return "🔴 ROUGE", "Descendant (Parti trop vite)"
-                elif ecart > 2.0 and borne > 300:
+                elif ecart > 2.0:
                     return "🟠 ORANGE", "Montant (Progressif / Fin de course)"
                 else:
                     return "🔵 BLEU", "Dent de scie (Irrégulier / Yo-yo)"
@@ -215,6 +219,4 @@ else:
                 hide_index=True
             )
 
-            st.info("💡 **Consigne observateur :** Vert = Stable | Rouge = Descendant (trop rapide) | Orange = Montant (accélération) | Bleu = Dent de scie (irrégulier).")
-        else:
-            st.warning("Aucun passage enregistré.")
+            st.info("💡 **Testez les 4 profils dans le menu déroulant :** Nathan (Stable), Chloé (Descendant), Lucas (Montant) et Manon (Dent de scie) réagissent instantanément !")
