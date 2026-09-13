@@ -139,31 +139,31 @@ elif mode_navigation == "🏃 2. Fiche Élève & Projets":
         with col_e2:
             nouveau_projet = st.selectbox("Choix du Projet :", ["Vert", "Jaune", "Orange"], index=["Vert", "Jaune", "Orange"].index(projet_actuel))
             if nouveau_projet != projet_actuel:
-                st.session_state.eleves_vma.loc[idx_eleve, "Projet"] = nouveau_projet
+                st.session_state.eleves_vma.at[idx_eleve, "Projet"] = nouveau_projet
                 if nouveau_projet == "Vert":
-                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = []
+                    st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = []
                 elif nouveau_projet == "Jaune":
-                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = [3]
+                    st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = [3]
                 else:
-                    st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = [2, 5]
+                    st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = [2, 5]
                 st.rerun()
 
         pauses_choisies = pauses_actuelles
         if nouveau_projet == "Jaune":
             st.write("🟡 **Projet Jaune :** Choisis **1 séquence de marche** (1 min 30) parmi les 8 blocs.")
-            choix_pause_1 = st.selectbox("Position de la pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if pauses_actuelles else 3)
+            choix_pause_1 = st.selectbox("Position de la pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if len(pauses_actuelles) > 0 else 3)
             pauses_choisies = [choix_pause_1]
-            st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = pauses_choisies
+            st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = pauses_choisies
 
         elif nouveau_projet == "Orange":
             st.write("🟠 **Projet Orange :** Choisis **2 séquences de marche** (3 min au total, consécutives ou non).")
             col_p1, col_p2 = st.columns(2)
             with col_p1:
-                p1 = st.selectbox("1ère pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if len(pauses_actuelles)>0 else 2)
+                p1 = st.selectbox("1ère pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if len(pauses_actuelles) > 0 else 2)
             with col_p2:
-                p2 = st.selectbox("2e pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[1] if len(pauses_actuelles)>1 else 5)
+                p2 = st.selectbox("2e pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[1] if len(pauses_actuelles) > 1 else 5)
             pauses_choisies = sorted(list(set([p1, p2])))
-            st.session_state.eleves_vma.loc[idx_eleve, "Pauses"] = pauses_choisies
+            st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = pauses_choisies
 
         if nouveau_projet == "Vert":
             allure_kmh = max(4.0, vma_eleve - 3.0)
