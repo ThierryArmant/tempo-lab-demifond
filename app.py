@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(
-    page_title="TempoLab - Projet de Course & Choix (Hanula)",
+    page_title="TempoLab - Blocs & Contrats (Hanula)",
     page_icon="⏱️",
     layout="wide"
 )
@@ -15,7 +15,7 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #111418 !important; border-right: 2px solid #262a33; padding-top: 10px; }
     h1 { font-size: 1.5rem !important; margin-bottom: 0px !important; padding-bottom: 0px !important; }
     h2 { font-size: 1.2rem !important; }
-    h3 { font-size: 1rem !important; }
+    h3 { font-size: 1.0rem !important; }
     p, span, label, div[data-testid="stSidebar"] * { color: #ffffff !important; font-size: 0.9rem; }
     [data-testid="stDataFrame"] *, [data-testid="stTable"] *, th, td { color: #000000 !important; font-size: 0.85rem !important; }
     div[data-testid="stMetric"] { background-color: #16181d; border: 1px solid #333842; border-radius: 8px; padding: 8px !important; }
@@ -44,11 +44,11 @@ if "eleves_vma" not in st.session_state:
                          75, 85, 90, 80, 80, 75, 85, 80, 75, 80]
     })
 
-# Paramètres globaux de la course (durée en minutes)
-if "duree_course_min" not in st.session_state:
-    st.session_state.duree_course_min = 6  # Par défaut le contrat de 6 minutes
+# Format de course par défaut (ex: Bloc 3 min - Bloc 6 min - Bloc 3 min)
+if "structure_course" not in st.session_state:
+    st.session_state.structure_course = "3' - 6' - 3'"
 
-# --- 2. GÉNÉRATION DES PASSAGES AUX BORNES (Tous les 25m) ---
+# --- 2. GÉNÉRATION DES PASSAGES AUX BORNES ---
 if "log_bornes_vma" not in st.session_state:
     logs = []
     np.random.seed(42)
@@ -58,7 +58,6 @@ if "log_bornes_vma" not in st.session_state:
         vma = eleve["VMA"]
         pct = eleve["Objectif_pct"]
         
-        # Vitesse effective avec petite variation aléatoire (Correction du bug d'espace)
         vitesse_effective = (vma * (pct / 100) * 1000) / 3600 * np.random.uniform(0.97, 1.03)
         
         temps_cumule = 0
@@ -78,7 +77,7 @@ df_eleves = st.session_state.eleves_vma
 df_passages = st.session_state.log_bornes_vma
 
 # --- MENU LATÉRAL DE NAVIGATION ---
-st.sidebar.title("🏁 TempoLab (Hanula)")
+st.sidebar.title("🏁 TempoLab (Blocs)")
 mode_navigation = st.sidebar.radio("📍 Navigation :", [
     "🛠️ 1. Paramétrage Prof", 
     "🏃 2. Fiche Élève & Contrat", 
@@ -94,32 +93,44 @@ df_classe = df_eleves[df_eleves["Classe"] == classe_choisie]
 # MODE 1 : PARAMÉTRAGE PROF
 # ==========================================
 if mode_navigation == "🛠️ 1. Paramétrage Prof":
-    st.title("🛠️ Espace Professeur - Configuration du Cycle")
-    st.write("Paramétrez ici la durée de course collective (ex: 6 minutes) et visualisez les contrats de toute la classe.")
+    st.title("🛠️ Espace Professeur - Choix du Format de Course")
+    st.write("Définissez la structure de la séance par blocs (ex: format 3'-6'-3' ou continu) et consultez les contrats attendus.")
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-         nouvelle_duree = st.selectbox("⏱️ Durée de la course collective :", [3, 4, 5, 6, 8, 10, 12], index=3)
-         if nouvelle_duree != st.session_state.duree_course_min:
-             st.session_state.duree_course_min = nouvelle_duree
-             st.success(f"Durée mise à jour : {nouvelle_duree} minutes.")
+        formats_possibles = ["Continu (6 min)", "Continu (12 min)", "3' - 6' - 3'", "2' - 4' - 2'", "Personnalisé (Libre)"]
+        choix_format = st.selectbox("⏱️ Structure des blocs de course :", formats_possibles, index=2)
+        if choix_format != st.session_state.structure_course:
+            st.session_state.structure_course = choix_format
+            st.success(f"Format mis à jour : {choix_format}")
 
     with col_p2:
-        st.metric("Format de travail", f"Course continue de {st.session_state.duree_course_min} minutes (Balises tous les 25m)")
+        st.metric("Mode Pédagogique", f"Sélection : {st.session_state.structure_course}")
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.subheader(f"📋 Suivi Global des Contrats - Classe {classe_choisie}")
+    st.subheader(f"📋 Contrats VMA - Classe {classe_choisie}")
     
     df_suivi_prof = df_classe.copy()
-    temps_total_s = st.session_state.duree_course_min * 60
+    # Calcul de la vitesse cible
     df_suivi_prof["Vitesse_Cible_ms"] = (df_suivi_prof["VMA"] * (df_suivi_prof["Objectif_pct"] / 100) * 1000) / 3600
-    df_suivi_prof["Distance_Theorique_m"] = (df_suivi_prof["Vitesse_Cible_ms"] * temps_total_s).round(1)
+    
+    # Estimation de la distance selon le format choisi
+    if "3' - 6' - 3'" in st.session_state.structure_course:
+        duree_totale_min = 12
+    elif "12 min" in st.session_state.structure_course:
+        duree_totale_min = 12
+    elif "2' - 4' - 2'" in st.session_state.structure_course:
+        duree_totale_min = 8
+    else:
+        duree_totale_min = 6
+
+    df_suivi_prof["Distance_Theorique_m"] = (df_suivi_prof["Vitesse_Cible_ms"] * (duree_totale_min * 60)).round(1)
 
     st.dataframe(
         df_suivi_prof[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_Theorique_m"]].rename(
             columns={
                 "Objectif_pct": "Contrat (% VMA)",
-                "Distance_Theorique_m": f"Distance Cible ({st.session_state.duree_course_min} min)"
+                "Distance_Theorique_m": f"Distance Cible ({duree_totale_min} min cumulées)"
             }
         ),
         use_container_width=True,
@@ -131,8 +142,8 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
 # MODE 2 : FICHE ÉLÈVE & CONTRAT
 # ==========================================
 elif mode_navigation == "🏃 2. Fiche Élève & Contrat":
-    st.title(f"🏃 Fiche Élève - Course de {st.session_state.duree_course_min} minutes")
-    st.write(f"Tous les coureurs effectuent la même durée ({st.session_state.duree_course_min} min). Choisis ton intensité (% VMA) pour fixer ton contrat de distance.")
+    st.title(f"🏃 Fiche Élève - Format : {st.session_state.structure_course}")
+    st.write("Sélectionne ton nom, ajuste ton contrat (% VMA) et visualise tes objectifs par blocs.")
 
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
     nom_selectionne = st.selectbox("🎯 Sélectionne ton nom :", df_classe["Label"])
@@ -157,9 +168,9 @@ elif mode_navigation == "🏃 2. Fiche Élève & Contrat":
                 st.rerun()
 
         vitesse_ms = (vma_eleve * (nouveau_pct / 100) * 1000) / 3600
-        distance_contrat_total = vitesse_ms * (st.session_state.duree_course_min * 60)
-
-        st.info(f"📌 **Ton contrat :** Vitesse de {vitesse_ms:.2f} m/s ➔ **Objectif total visé : {distance_contrat_total:.1f} mètres** en {st.session_state.duree_course_min} minutes.")
+        
+        # Gestion des repères par blocs (ex: 3' - 6' - 3')
+        st.info(f"📌 **Vitesse cible :** {vitesse_ms:.2f} m/s. Respecte les consignes de changement d'allure selon les blocs de ta fiche !")
 
         df_ses_bornes = df_passages[df_passages["Dossard"] == dossard_actif].copy()
 
@@ -168,12 +179,11 @@ elif mode_navigation == "🏃 2. Fiche Élève & Contrat":
             
             distance_max_reelle = df_ses_bornes["Borne_m"].max()
             dernier_temps_s = df_ses_bornes.iloc[-1]["Temps_s"]
-            distance_realisee_estimee = vitesse_ms * dernier_temps_s
 
             col_m1, col_m2, col_m3 = st.columns(3)
             col_m1.metric("📏 Dist. Réelle Validée", f"{distance_max_reelle} m")
-            col_m2.metric("🎯 Distance Cible Théorique", f"{distance_realisee_estimee:.1f} m")
-            col_m3.metric("⏱️ Temps Écoulé", f"{dernier_temps_s} s")
+            col_m2.metric("⏱️ Temps Écoulé", f"{dernier_temps_s} s")
+            col_m3.metric("🎯 Vitesse Contrat", f"{(vitesse_ms*3.6):.1f} km/h")
 
             st.markdown("<hr>", unsafe_allow_html=True)
             st.subheader("📋 Passages intermédiaires aux bornes (Tous les 25m)")
@@ -200,8 +210,8 @@ elif mode_navigation == "🏃 2. Fiche Élève & Contrat":
 # MODE 3 : POSTE OBSERVATEUR (TERRAIN)
 # ==========================================
 else:
-    st.title(f"👁️ Poste Observateur - Course de {st.session_state.duree_course_min} min")
-    st.write("Suivez votre coureur à chaque passage de borne, analysez son écart par rapport à son contrat et qualifiez son profil d'allure.")
+    st.title(f"👁️ Poste Observateur - Format : {st.session_state.structure_course}")
+    st.write("Suivez votre coureur à chaque borne, analysez l'écart par rapport au contrat et qualifiez son profil d'allure.")
 
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
     coureur_choisi = st.selectbox("🎯 Coureur observé :", df_classe["Label"])
@@ -235,7 +245,7 @@ else:
                 elif ecart < -2.0:
                     return "🔴 ROUGE", "Descendant (Parti trop vite)"
                 elif ecart > 2.0:
-                    return "🟠 ORANGE", "Montant (Progressif / Fin de course)"
+                    return "🟠 ORANGE", "Montant (Progressif / Fin de bloc)"
                 else:
                     return "🔵 BLEU", "Dent de scie (Irrégulier / Yo-yo)"
 
@@ -258,4 +268,4 @@ else:
                 hide_index=True
             )
 
-            st.info("💡 **Rétroaction verbale :** Annoncez la couleur et le profil pour aider le coureur à ajuster son allure par rapport à son contrat.")
+            st.info("💡 **Rétroaction verbale :** Annoncez la couleur et le profil pour aider le coureur à ajuster son allure selon les consignes du bloc en cours.")
