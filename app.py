@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 
 st.set_page_config(
-    page_title="TempoLabDemifond - Combinaisons d'Effort",
+    page_title="TempoLabDemifond - Profils Énergétiques",
     page_icon="⏱️",
     layout="wide"
 )
@@ -65,9 +65,9 @@ classe_active = st.sidebar.selectbox("📂 Choisir la classe :", list_classes)
 df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" in df_eleves.columns else df_eleves
 
 st.sidebar.markdown("---")
-st.sidebar.info("🎯 **Stratégie d'effort :** Choix des combinaisons de fractions (3/6/3, 9+3, 6/3+9+1.3, etc.) et analyse des écarts.")
+st.sidebar.info("🎯 **Analyse de course :** Choix des scénarios, registres physiologiques et suivi des écarts en temps réel.")
 
-st.title(f"🏃 Gestion d'Allure & Combinaisons - Classe : {classe_active}")
+st.title(f"🏃 Gestion d'Allure & Profils Énergétiques - Classe : {classe_active}")
 
 if not df_eleves_classe.empty:
     # 1. Choix de la combinaison stratégique de l'élève
@@ -81,13 +81,35 @@ if not df_eleves_classe.empty:
         ]
     )
 
-    # Attribution de la durée totale en minutes (arrondie à la minute supérieure pour le suivi)
-    if "Option 1" in combinaison_choisie or "Option 2" in combinaison_choisie:
+    # --- ENCADRÉ PÉDAGOGIQUE DU PROFIL ÉNERGÉTIQUE ---
+    if "Option 1" in combinaison_choisie:
         duree_totale_min = 24
+        st.info(
+            "🧠 **Profil Physiologique : Endurance de Longue Durée & Résistance Souple**\n\n"
+            "• **Ce que tu travailles :** Ton capital aérobie global et ta capacité à maintenir un effort prolongé (24 min) malgré la fatigue musculaire et nerveuse qui s'installe par paliers.\n"
+            "• **Stratégie :** Ne pars pas trop vite sur les blocs de 3 ou 6 min initiaux. L'enjeu est la régularité sur le bloc central de 9 minutes."
+        )
+    elif "Option 2" in combinaison_choisie:
+        duree_totale_min = 24
+        st.info(
+            "🧠 **Profil Physiologique : Endurance Fondamentale & Maintien Prolongé**\n\n"
+            "• **Ce que tu travailles :** La gestion d'une longue séquence finale de 12 minutes après un échauffement fractionné (3/6/3).\n"
+            "• **Stratégie :** Le gros morceau se situe sur la fin. Tu dois lisser ton effort pour ne pas t'écrouler dans la dernière demi-heure virtuelle."
+        )
     elif "Option 3" in combinaison_choisie:
         duree_totale_min = 22
-    else:
+        st.info(
+            "🧠 **Profil Physiologique : Puissance Aérobie & Variations d'Allure (Fartlek)**\n\n"
+            "• **Ce que tu travailles :** Ta capacité à encaisser des changements de rythme répétés (fractions courtes et longues alternées) tout en gérant de micro-efforts (1.3 min).\n"
+            "• **Stratégie :** Sois très vigilant sur tes transitions : ne récupère pas en marchant trop lentement pour ne pas casser ta dynamique."
+        )
+    else:  # Option 4
         duree_totale_min = 18
+        st.info(
+            "🧠 **Profil Physiologique : Résistance Dure & Dégressivité d'Effort**\n\n"
+            "• **Ce que tu travailles :** Un effort intense et ramassé (18 min) qui commence par le bloc le plus long (9 min) alors que tu es frais, pour finir en dégressif (6 min puis 3 min).\n"
+            "• **Stratégie :** C'est un profil difficile au démarrage car le bloc de 9 min à froid demande de bien caler sa vitesse dès la 1ère minute !"
+        )
 
     st.markdown("---")
 
@@ -112,7 +134,7 @@ if not df_eleves_classe.empty:
     st.markdown("---")
 
     # 3. Saisie minute par minute selon la durée totale de la combinaison
-    st.subheader(f"⏱️ Saisie des passages minute par minute (Scénario : {combinaison_choisie})")
+    st.subheader("⏱️ Saisie des passages minute par minute (Suivi d'effort)")
     
     minutes_list = list(range(1, duree_totale_min + 1))
     minute_active = st.selectbox("Minute de course en cours :", minutes_list)
