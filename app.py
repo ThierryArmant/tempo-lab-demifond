@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 st.set_page_config(
     page_title="TempoLab - Curseur VMA & Distance Cible",
@@ -18,34 +19,51 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- BASE ÉLÈVES (AVEC VMA ET % DE CONTRAT INITIAL) ---
+# --- BASE ÉLÈVES (CLASSE DE 5ème - 20 Élèves) ---
 if "eleves_vma" not in st.session_state:
     st.session_state.eleves_vma = pd.DataFrame({
-        "Classe": ["5e5", "5e5", "5e7"],
-        "Dossard": [501, 502, 701],
-        "Nom": ["Nathan Blanc", "Chloé Bonnet", "Lucas Brunet"],
-        "VMA": [13.5, 11.5, 14.2],
-        "Objectif_pct": [80, 75, 85]
+        "Classe": ["5ème"] * 20,
+        "Dossard": [5501, 5502, 5503, 5504, 5505, 5506, 5507, 5508, 5509, 5510, 
+                    5511, 5512, 5513, 5514, 5515, 5516, 5517, 5518, 5519, 5520],
+        "Nom": [
+            "Blanc Nathan", "Bonnet Chloé", "Brunet Lucas", "Chevalier Manon", 
+            "Clement Hugo", "Colin Emma", "David Théo", "Dupond Sarah", 
+            "Dupont Thomas", "Fabre Inès", "Faure Louis", "Fontaine Zoé", 
+            "Fournier Lucas", "Garcia Léa", "Garnier Tom", "Gautier Camille", 
+            "Girard Nathan", "Guerin Juliette", "Henry Hugo", "Laurent Maëlys"
+        ],
+        "VMA": [13.5, 11.5, 14.8, 12.0, 13.0, 12.8, 15.0, 10.5, 14.2, 13.2, 
+                12.2, 14.0, 15.5, 11.8, 13.8, 12.5, 14.5, 13.6, 12.9, 14.1],
+        "Objectif_pct": [80, 75, 85, 80, 80, 75, 90, 75, 80, 80, 
+                         75, 85, 90, 80, 80, 75, 85, 80, 75, 80]
     })
 
-# --- SIMULATION DES PASSAGES AUX BORNES RFID (Tous les 25m) AVEC TEMPS EN SECONDES ---
+# --- GÉNÉRATION AUTOMATIQUE DES PASSAGES AUX BORNES (Tous les 25m jusqu'à 600m) ---
 if "log_bornes_vma" not in st.session_state:
-    st.session_state.log_bornes_vma = pd.DataFrame([
-        # Nathan Blanc (Dossard 501)
-        {"Dossard": 501, "Borne_m": 25, "Temps_s": 10},
-        {"Dossard": 501, "Borne_m": 50, "Temps_s": 21},
-        {"Dossard": 501, "Borne_m": 75, "Temps_s": 32},
-        {"Dossard": 501, "Borne_m": 100, "Temps_s": 43},
-        {"Dossard": 501, "Borne_m": 125, "Temps_s": 54},
-        {"Dossard": 501, "Borne_m": 150, "Temps_s": 65},
-        {"Dossard": 501, "Borne_m": 175, "Temps_s": 76},
-        {"Dossard": 501, "Borne_m": 200, "Temps_s": 88},
-        # Chloé Bonnet (Dossard 502)
-        {"Dossard": 502, "Borne_m": 25, "Temps_s": 12},
-        {"Dossard": 502, "Borne_m": 50, "Temps_s": 25},
-        {"Dossard": 502, "Borne_m": 75, "Temps_s": 38},
-        {"Dossard": 502, "Borne_m": 100, "Temps_s": 52},
-    ])
+    logs = []
+    np.random.seed(42) # Pour garder des résultats stables
+    
+    for _, eleve in st.session_state.eleves_vma.iterrows():
+        dossard = eleve["Dossard"]
+        vma = eleve["VMA"]
+        pct = eleve["Objectif_pct"]
+        
+        # Vitesse réelle en m/s avec un petit facteur aléatoire de forme le jour J
+        vitesse_effective = (vma * (pct / 100) * 1000) / 3600 * np.random.uniform(0.97, 1.03)
+        
+        temps_cumule = 0
+        for borne in range(25, 601, 25):
+            # Temps théorique pour 25m + micro variation de régularité
+            temps_intervalle = (25 / vitesse_effective) * np.random.uniform(0.98, 1.02)
+            temps_cumule += temps_intervalle
+            
+            logs.append({
+                "Dossard": dossard,
+                "Borne_m": borne,
+                "Temps_s": round(temps_cumule, 1)
+            })
+            
+    st.session_state.log_bornes_vma = pd.DataFrame(logs)
 
 df_eleves = st.session_state.eleves_vma
 df_passages = st.session_state.log_bornes_vma
@@ -85,7 +103,7 @@ if nom_selectionne:
         # Le curseur pour ajuster l'intensité en direct
         pct_vma_curseur = st.slider("Curseur d'intensité (% VMA) :", min_value=50, max_value=110, value=pct_initial, step=5)
 
-    # Calcul de la vitesse en mètres par seconde (m/s) et mètres par minute (m/min)
+    # Calcul de la vitesse en mètres par seconde (m/s)
     vitesse_ms = (vma_eleve * (pct_vma_curseur / 100) * 1000) / 3600
     
     st.info(f"📌 **Vitesse cible :** {vitesse_ms:.2f} m/s (soit environ {(vitesse_ms*60):.1f} m par minute).")
