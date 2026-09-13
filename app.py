@@ -91,7 +91,7 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
     
     def calc_distance_12min(row):
         v_ms = row["Vitesse_ms"]
-        nb_pauses = len(row["Pauses"])
+        nb_pauses = len(row["Pauses"]) if row["Projet"] != "Vert" else 0
         temps_course_s = (8 - nb_pauses) * 90
         return round(v_ms * temps_course_s, 1)
 
@@ -116,7 +116,7 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
 # ==========================================
 elif mode_navigation == "🏃 2. Fiche Élève & Projets":
     st.title("🏃 Fiche Élève - Ma Course de 12 Minutes")
-    st.write("Choisis ton projet de course (Vert, Jaune ou Orange) et positionne tes pauses si tu choisis le jaune ou l'orange.")
+    st.write("Choisis ton projet de course (Vert = continu, Jaune = 1 pause, Orange = 2 pauses).")
 
     df_classe = st.session_state.eleves_vma.loc[df_classe_idx].copy()
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
@@ -148,8 +148,13 @@ elif mode_navigation == "🏃 2. Fiche Élève & Projets":
                     st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = [2, 5]
                 st.rerun()
 
-        pauses_choisies = pauses_actuelles
-        if nouveau_projet == "Jaune":
+        pauses_choisies = []
+        if nouveau_projet == "Vert":
+            st.success("🟢 **Projet Vert :** Course continue sur les 12 minutes (aucun choix de pause, allure fixe à VMA - 3 km/h).")
+            pauses_choisies = []
+            st.session_state.eleves_vma.at[idx_eleve, "Pauses"] = []
+
+        elif nouveau_projet == "Jaune":
             st.write("🟡 **Projet Jaune :** Choisis **1 séquence de marche** (1 min 30) parmi les 8 blocs.")
             choix_pause_1 = st.selectbox("Position de la pause d'1'30 :", options=range(8), format_func=lambda x: LABELS_SEQUENCES[x], index=pauses_actuelles[0] if len(pauses_actuelles) > 0 else 3)
             pauses_choisies = [choix_pause_1]
@@ -210,7 +215,7 @@ else:
         
         vma_obs = float(infos_obs["VMA"])
         projet_obs = infos_obs["Projet"]
-        pauses_obs = infos_obs["Pauses"]
+        pauses_obs = infos_obs["Pauses"] if projet_obs != "Vert" else []
 
         if projet_obs == "Vert":
             allure_obs = max(4.0, vma_obs - 3.0)
