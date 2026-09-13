@@ -11,14 +11,20 @@ st.set_page_config(
 # --- DESIGN EXTERIEUR HAUT CONTRASTE (ANTI-REFLETS SOLEIL) ---
 st.markdown("""
     <style>
-    /* Fond global noir mat anti-reflets */
+    /* Fond global de l'application */
     .stApp {
         background-color: #050505;
         color: #ffffff;
     }
     
-    /* Forcer le texte en blanc pour un contraste maximal au soleil */
-    h1, h2, h3, h4, h5, h6, p, span, label {
+    /* Fond sombre et net sur la barre latérale */
+    [data-testid="stSidebar"] {
+        background-color: #111418 !important;
+        border-right: 2px solid #262a33;
+    }
+    
+    /* Forcer tous les textes en blanc pour un contraste maximal au soleil */
+    h1, h2, h3, h4, h5, h6, p, span, label, div[data-testid="stSidebar"] * {
         color: #ffffff !important;
     }
     
@@ -34,7 +40,7 @@ st.markdown("""
     .stButton>button {
         width: 100%;
         background-color: #1f6feb;
-        color: white;
+        color: white !important;
         font-weight: bold;
         font-size: 18px;
         border-radius: 8px;
@@ -76,14 +82,12 @@ except Exception:
 # --- BARRE LATÉRALE : SÉLECTION DE LA CLASSE & NAVIGATION ---
 st.sidebar.title("🧭 TempoLabDemifond")
 
-# SÉLECTEUR DE CLASSE GLOBAL (Gère jusqu'à 8 classes et plus)
 list_classes = sorted(df_eleves["Classe"].unique().tolist()) if "Classe" in df_eleves.columns else ["6ème A"]
 classe_active = st.sidebar.selectbox("📂 Choisir la classe :", list_classes)
 
 st.sidebar.markdown("---")
 mode = st.sidebar.radio("Espace :", ["Espace Élève / Terrain", "Espace Professeur (Sécurisé)"])
 
-# Filtrer les élèves de la classe active
 df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" in df_eleves.columns else df_eleves
 
 # --- ESPACE ÉLÈVE / TERRAIN ---
@@ -143,7 +147,7 @@ if mode == "Espace Élève / Terrain":
         if col_sim4.button("Tournant 75m"):
             enregistrer_passage("75m")
 
-        # Historique de la classe / de l'élève
+        # Historique
         st.markdown("### 📋 Historique de vos passages")
         try:
             df_passages_actuel = conn.read(worksheet="passages", ttl=0)
@@ -169,10 +173,33 @@ elif mode == "Espace Professeur (Sécurisé)":
     if code_pin == "EPS2026":
         st.success("Accès administrateur déverrouillé.")
         
-        st.subheader(f"📊 Gestion des élèves de la classe {classe_active}")
+        # --- NOUVEAU : IMPORTATION DE FICHIER ÉLÈVES (CSV / EXCEL) ---
+        st.subheader("📥 Importer une liste d'élèves (Fichier CSV ou Excel)")
+        uploaded_file = st.file_uploader("Glissez-déposez votre fichier ici (Colonnes attendues : Classe, Dossard, Nom, VMA, Objectif_pct, Distance_cible_m)", type=["csv", "xlsx"])
+        
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    df_upload = pd.read_csv(uploaded_file)
+                else:
+                    df_upload = pd.read_excel(uploaded_file)
+                
+                st.write("Aperçu du fichier importé :", df_upload.head(3))
+                if st.button("Valider et remplacer la base élèves par ce fichier"):
+                    try:
+                        conn.update(worksheet="eleves", data=df_upload)
+                        st.success("Base élèves mise à jour avec succès depuis le fichier !")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur lors de la synchronisation Google Sheets : {e}")
+            except Exception as e:
+                st.error(f"Erreur de lecture du fichier : {e}")
+
+        st.markdown("---")
+        st.subheader(f"📊 Modification manuelle - Classe {classe_active}")
         edited_df = st.data_editor(df_eleves_classe, num_rows="dynamic")
         
-        if st.button("Enregistrer les modifications dans Google Sheets"):
+        if st.button("Enregistrer les modifications de la classe"):
             try:
                 df_autres_classes = df_eleves[df_eleves["Classe"] != classe_active] if "Classe" in df_eleves.columns else pd.DataFrame()
                 df_global_maj = pd.concat([df_autres_classes, edited_df], ignore_index=True)
@@ -182,6 +209,7 @@ elif mode == "Espace Professeur (Sécurisé)":
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour : {e}")
 
+        st.markdown("---")
         st.subheader("⚙️ Actions de séance")
         if st.button("Effacer l'historique des passages de cette classe"):
             try:
