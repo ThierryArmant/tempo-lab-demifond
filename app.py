@@ -115,40 +115,45 @@ df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" i
 # --- ESPACE ÉLÈVE / TERRAIN ---
 if mode == "Espace Élève / Terrain":
     st.title(f"🏃 TempoLabDemifond - Classe : {classe_active}")
-    st.info("Retrouve ton nom dans le tableau général de la classe, vérifie tes stats, puis sélectionne ton profil pour courir.")
+    st.info("Voici toute la classe en direct. Consultez vos contrats ci-dessous, puis sélectionnez votre nom pour chronométrer vos passages.")
 
     if not df_eleves_classe.empty:
-        # --- TABLEAU DE BORD GÉNÉRAL DE LA CLASSE (VISIBLE PAR TOUS EN TEMPS RÉEL) ---
-        st.subheader("📋 Tableau général des contrats de la classe")
+        # --- 1. AFFICHAGE GLOBAL DE TOUTE LA CLASSE EN TEMPS RÉEL ---
+        st.subheader("📋 Vue d'ensemble de toute la classe")
         
-        # Préparation d'une vue claire pour les élèves
-        df_affichage_classe = df_eleves_classe[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_cible_m"]].copy()
-        df_affichage_classe.columns = ["Dossard", "Nom", "VMA (km/h)", "Contrat (% VMA)", "Distance Cible (m)"]
-        st.dataframe(df_affichage_classe, use_container_width=True, hide_index=True)
+        # Calcul de la vitesse cible pour chaque élève pour enrichir le tableau général
+        df_vue_globale = df_eleves_classe.copy()
+        df_vue_globale["Vitesse Cible (km/h)"] = (df_vue_globale["VMA"] * (df_vue_globale["Objectif_pct"] / 100)).round(2)
+        
+        df_affichage = df_vue_globale[["Dossard", "Nom", "VMA", "Objectif_pct", "Distance_cible_m", "Vitesse Cible (km/h)"]].copy()
+        df_affichage.columns = ["Dossard", "Nom", "VMA (km/h)", "Contrat (% VMA)", "Distance (m)", "Vitesse Cible (km/h)"]
+        
+        # Affichage du grand tableau contenant toute la classe
+        st.dataframe(df_affichage, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        st.subheader("🎯 Espace Actif de Course")
-
-        # Sélection de l'élève pour lancer le simulateur
+        
+        # --- 2. SÉLECTION DE L'ÉLÈVE ACTIF POUR LE CHRONOMÉTRAGE ---
+        st.subheader("⏱️ Chronométrage / Saisie des passages sur le terrain")
+        
         df_eleves_classe["Label_Eleve"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
-        choix_eleve = st.selectbox("Sélectionne ton nom pour démarrer ton chronométrage :", df_eleves_classe["Label_Eleve"])
+        choix_eleve = st.selectbox("🎯 Sélectionnez l'élève qui court actuellement :", df_eleves_classe["Label_Eleve"])
         
         dossard_actif = int(choix_eleve.split(" - ")[0])
         eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
 
         vma_actuelle = float(eleve_info["VMA"])
 
-        # --- CONTRÔLE OBLIGATOIRE DE LA VMA ---
+        # Contrôle obligatoire de la VMA
         if vma_actuelle <= 0 or pd.isna(vma_actuelle):
-            st.error("⚠️ **ATTENTION : Aucune VMA valide n'est enregistrée pour cet élève !** Les calculs sont impossibles.")
-            st.warning("Veuillez demander au professeur de renseigner votre VMA dans l'Espace Professeur (ou indiquez-la temporairement ci-dessous).")
+            st.error("⚠️ **ATTENTION : Aucune VMA valide n'est enregistrée pour cet élève !**")
             vma_saisie = st.number_input("Indique ta VMA (en km/h) :", min_value=5.0, max_value=25.0, value=12.0, step=0.5)
             vma = vma_saisie
         else:
             vma = vma_actuelle
 
-        # --- PARAMÉTRAGE DU PROTOCOLE & OBJECTIF ---
-        st.subheader("⚙️ Paramétrage de ton protocole")
+        # --- PARAMÉTRAGE DU PROTOCOLE & OBJECTIF DE L'ÉLÈVE ACTIF ---
+        st.markdown("#### ⚙️ Paramétrage du protocole pour cet élève")
         col_protocole, col_dist, col_pct = st.columns(3)
         
         with col_protocole:
@@ -178,9 +183,9 @@ if mode == "Espace Élève / Terrain":
         temps_total_estime = (distance_choisie / vitesse_ms) if vitesse_ms > 0 else 0
         m_est = int(temps_total_estime // 60)
         s_est = int(temps_total_estime % 60)
-        st.success(f"📌 **OBJECTIF CONTRAT :** Parcourir **{distance_choisie}m** à **{pct_choisi}% VMA** ({vitesse_cible_kmh:.2f} km/h) | Temps idéal : **{m_est}m {s_est:02d}s**.")
+        st.success(f"📌 **OBJECTIF CONTRAT ({elev_info['Nom']}) :** Parcourir **{distance_choisie}m** à **{pct_choisi}% VMA** ({vitesse_cible_kmh:.2f} km/h) | Temps idéal : **{m_est}m {s_est:02d}s**.")
 
-        with st.expander("⏱️ Voir mon tableau de marche idéal par plot"):
+        with st.expander(f"⏱️ Voir le tableau de marche idéal par plot pour {eleve_info['Nom']}"):
             distances_plots = list(range(ecart_plots, distance_choisie + ecart_plots, ecart_plots))
             if distances_plots[-1] != distance_choisie:
                 distances_plots.append(distance_choisie)
@@ -192,7 +197,7 @@ if mode == "Espace Élève / Terrain":
             st.table(pd.DataFrame(tableau_marche))
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Élève", eleve_info["Nom"])
+        col1.metric("Élève actif", eleve_info["Nom"])
         col2.metric("VMA", f"{vma} km/h")
         col3.metric("Contrat", f"{pct_choisi}% VMA")
         col4.metric("Vitesse Cible", f"{vitesse_cible_kmh:.2f} km/h")
@@ -239,9 +244,9 @@ if mode == "Espace Élève / Terrain":
             if col_cible.button(plot_nom, key=f"btn_{plot_nom}"):
                 enregistrer_passage(plot_nom)
 
-        # Graphique et historique
+        # Graphique et historique de l'élève actif
         st.markdown("---")
-        st.subheader("📈 Courbe d'analyse de course")
+        st.subheader(f"📈 Courbe d'analyse de course - {eleve_info['Nom']}")
         
         try:
             df_passages_actuel = conn.read(worksheet="passages", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
@@ -329,7 +334,6 @@ elif mode == "Espace Professeur (Sécurisé)":
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour : {e}")
 
---------
         st.markdown("---")
         st.subheader("⚙️ Actions de séance")
         if st.button("Effacer l'historique des passages de cette classe"):
