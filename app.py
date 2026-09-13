@@ -3,12 +3,12 @@ import pandas as pd
 import datetime
 
 st.set_page_config(
-    page_title="TempoLabDemifond - Analyse d'Effort",
+    page_title="TempoLabDemifond - Combinaisons d'Effort",
     page_icon="⏱️",
     layout="wide"
 )
 
-# --- DESIGN HAUT CONTRASTE (Fond noir, texte blanc, tableaux lisibles) ---
+# --- DESIGN HAUT CONTRASTE ---
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: #ffffff; }
@@ -65,24 +65,35 @@ classe_active = st.sidebar.selectbox("📂 Choisir la classe :", list_classes)
 df_eleves_classe = df_eleves[df_eleves["Classe"] == classe_active] if "Classe" in df_eleves.columns else df_eleves
 
 st.sidebar.markdown("---")
-st.sidebar.info("🎯 **Objectif :** Gestion d'effort, fractions (3min/6min/3min ou 9min) et analyse des écarts en temps réel.")
+st.sidebar.info("🎯 **Stratégie d'effort :** Choix des combinaisons de fractions (3/6/3, 9+3, 6/3+9+1.3, etc.) et analyse des écarts.")
 
-st.title(f"🏃 Analyse de Course & Écarts - Classe : {classe_active}")
+st.title(f"🏃 Gestion d'Allure & Combinaisons - Classe : {classe_active}")
 
 if not df_eleves_classe.empty:
-    format_course = st.selectbox(
-        "⏱️ Choisir la structure de la séance / format d'effort :",
+    # 1. Choix de la combinaison stratégique de l'élève
+    combinaison_choisie = st.selectbox(
+        "🧩 Choisir la combinaison / scénario de course de l'élève :",
         [
-            "Option A : 9 minutes en continu (Bloc unique)",
-            "Option B : 6 minutes puis 3 minutes (Fractionné progressif)",
-            "Option C : 3 min / 6 min / 3 min (Alternance)"
+            "Option 1 : 3/6/3 + 9 + 3 (Total 24 min)",
+            "Option 2 : 3/6/3 + 12 (Total 24 min)",
+            "Option 3 : 6/3 + 9 + 1.3 + 1.3 (Total ~21.6 min)",
+            "Option 4 : 9 + 6 + 3 (Total 18 min)"
         ]
     )
 
+    # Attribution de la durée totale en minutes (arrondie à la minute supérieure pour le suivi)
+    if "Option 1" in combinaison_choisie or "Option 2" in combinaison_choisie:
+        duree_totale_min = 24
+    elif "Option 3" in combinaison_choisie:
+        duree_totale_min = 22
+    else:
+        duree_totale_min = 18
+
     st.markdown("---")
 
+    # 2. Sélection de l'élève
     df_eleves_classe["Label"] = df_eleves_classe["Dossard"].astype(str) + " - " + df_eleves_classe["Nom"]
-    choix_eleve = st.selectbox("🎯 Sélectionner l'élève à analyser / chronométrer :", df_eleves_classe["Label"])
+    choix_eleve = st.selectbox("🎯 Sélectionner l'élève :", df_eleves_classe["Label"])
     
     dossard_actif = int(choix_eleve.split(" - ")[0])
     eleve_info = df_eleves_classe[df_eleves_classe["Dossard"] == dossard_actif].iloc[0]
@@ -95,28 +106,24 @@ if not df_eleves_classe.empty:
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Élève", eleve_info["Nom"])
-    col2.metric("VMA", f"{vma} km/h")
+    col2.metric("VMA / Contrat", f"{vma} km/h ({pct_vma}%)")
     col3.metric("Vitesse Cible", f"{vitesse_m_min:.1f} m / minute")
 
     st.markdown("---")
 
-    st.subheader("⏱️ Saisie des passages minute par minute (Suivi d'effort)")
+    # 3. Saisie minute par minute selon la durée totale de la combinaison
+    st.subheader(f"⏱️ Saisie des passages minute par minute (Scénario : {combinaison_choisie})")
     
-    if "Option B" in format_course: 
-        minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    elif "Option C" in format_course: 
-        minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    else: 
-        minutes_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-
+    minutes_list = list(range(1, duree_totale_min + 1))
     minute_active = st.selectbox("Minute de course en cours :", minutes_list)
+    
     distance_ideale_cumulee = vitesse_m_min * minute_active
 
     col_saisie1, col_saisie2 = st.columns(2)
     with col_saisie1:
         distance_reelle_cumulee = st.number_input(
             f"Distance réelle cumulée (m) à la minute {minute_active} :", 
-            min_value=0, max_value=3000, value=int(distance_ideale_cumulee), step=25
+            min_value=0, max_value=6000, value=int(distance_ideale_cumulee), step=25
         )
     
     with col_saisie2:
@@ -155,9 +162,9 @@ if not df_eleves_classe.empty:
         st.session_state.passages_local = pd.concat([st.session_state.passages_local, nouveau_point], ignore_index=True)
         st.success(f"Minute {minute_active} enregistrée !")
 
-    # --- 4. AFFICHAGE DU FEEDBACK EN TEMPS RÉEL (COURBES & ÉCARTS) ---
+    # --- 4. FEEDBACK EN TEMPS RÉEL (ÉCARTS & COURBES) ---
     st.markdown("---")
-    st.subheader(f"📈 Courbe d'allure et Écarts au contrat - {eleve_info['Nom']}")
+    st.subheader(f"📈 Analyse des Écarts et Courbe d'Allure - {eleve_info['Nom']}")
 
     try:
         df_source = conn.read(worksheet="passages_demifond", ttl=0) if (use_gsheets and conn is not None) else st.session_state.get("passages_local", pd.DataFrame())
@@ -184,14 +191,14 @@ if not df_eleves_classe.empty:
             else:
                 col_m3.metric("Écart au temps", "0 mètre", delta="Parfait aligné sur le contrat !")
 
-            st.markdown("##### 📋 Tableau de marche détaillé :")
+            st.markdown("##### 📋 Tableau de marche détaillé par minute :")
             st.dataframe(df_eleve_cours[["Minute", "Distance_Reelle", "Distance_Ideale", "Ecart_m", "Temps"]], use_container_width=True, hide_index=True)
 
             st.markdown("##### 📉 Graphique comparatif (Allure Réelle vs Allure Idéale) :")
             df_graph = df_eleve_cours.set_index("Minute")[["Distance_Reelle", "Distance_Ideale"]]
             st.line_chart(df_graph)
         else:
-            st.info("Aucun point de passage enregistré pour cet élève sur cette séance. Saisissez la première minute ci-dessus.")
+            st.info("Aucun point de passage enregistré pour cet élève sur cette séance.")
     else:
         st.info("Aucun enregistrement pour l'instant dans la base.")
 else:
