@@ -58,11 +58,10 @@ if "log_bornes_vma" not in st.session_state:
         vma = eleve["VMA"]
         pct = eleve["Objectif_pct"]
         
-        # Vitesse effective avec petite variation aléatoire
-        vitesse_ effective = (vma * (pct / 100) * 1000) / 3600 * np.random.uniform(0.97, 1.03)
+        # Vitesse effective avec petite variation aléatoire (Correction du bug d'espace)
+        vitesse_effective = (vma * (pct / 100) * 1000) / 3600 * np.random.uniform(0.97, 1.03)
         
         temps_cumule = 0
-        # Simulation sur 600m max ou selon la durée
         for borne in range(25, 1201, 25):
             temps_intervalle = (25 / vitesse_effective) * np.random.uniform(0.98, 1.02)
             temps_cumule += temps_intervalle
@@ -111,7 +110,6 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
     st.markdown("<hr>", unsafe_allow_html=True)
     st.subheader(f"📋 Suivi Global des Contrats - Classe {classe_choisie}")
     
-    # Calcul de la distance théorique visée pour chaque élève sur la durée choisie
     df_suivi_prof = df_classe.copy()
     temps_total_s = st.session_state.duree_course_min * 60
     df_suivi_prof["Vitesse_Cible_ms"] = (df_suivi_prof["VMA"] * (df_suivi_prof["Objectif_pct"] / 100) * 1000) / 3600
@@ -134,7 +132,7 @@ if mode_navigation == "🛠️ 1. Paramétrage Prof":
 # ==========================================
 elif mode_navigation == "🏃 2. Fiche Élève & Contrat":
     st.title(f"🏃 Fiche Élève - Course de {st.session_state.duree_course_min} minutes")
-    st.write(f"Tout le courreurs effectuent la même durée ({st.session_state.duree_course_min} min). Choisis ton intensité (% VMA) pour fixer ton contrat de distance.")
+    st.write(f"Tous les coureurs effectuent la même durée ({st.session_state.duree_course_min} min). Choisis ton intensité (% VMA) pour fixer ton contrat de distance.")
 
     df_classe["Label"] = df_classe["Dossard"].astype(str) + " - " + df_classe["Nom"]
     nom_selectionne = st.selectbox("🎯 Sélectionne ton nom :", df_classe["Label"])
@@ -260,4 +258,4 @@ else:
                 hide_index=True
             )
 
-            st.info("💡 **Rétroaction verbale :** Annoncez la couleur et le profil pour aider le coureur à ajuster son allure par rapport à son contrat de 6 minutes.")
+            st.info("💡 **Rétroaction verbale :** Annoncez la couleur et le profil pour aider le coureur à ajuster son allure par rapport à son contrat.")
